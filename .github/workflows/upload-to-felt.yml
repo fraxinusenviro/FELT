@@ -25,7 +25,7 @@ jobs:
 
       - name: Find new GeoJSON files and upload to Felt
         env:
-          FELT_API_KEY: ${{ secrets.FELT_API_KEY }}
+          FELT_API_KEY: ${{ secrets.FELT_API }}
           FELT_MAP_ID: "z9BIC4uGlQfOXcwHwYGKwRC"
         run: |
           python - <<'PYEOF'
