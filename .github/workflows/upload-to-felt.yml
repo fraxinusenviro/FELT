@@ -6,6 +6,9 @@ on:
       - "submissions/*.geojson"
     branches: [main]
 
+permissions:
+  contents: write
+
 jobs:
   upload:
     runs-on: ubuntu-latest
@@ -23,7 +26,7 @@ jobs:
       - name: Install requests
         run: pip install requests
 
-      - name: Find new GeoJSON files and upload to Felt
+      - name: Upload new layers or refresh existing layers on Felt
         env:
           FELT_API_KEY: ${{ secrets.FELT_API }}
           FELT_MAP_ID: "z9BIC4uGlQfOXcwHwYGKwRC"
@@ -35,6 +38,9 @@ jobs:
           api_key = os.environ["FELT_API_KEY"]
           map_id  = os.environ["FELT_MAP_ID"]
 
+          meta_dir = Path("submissions/.meta")
+          meta_dir.mkdir(parents=True, exist_ok=True)
+
           # Find GeoJSON files added or modified in the latest commit
           import subprocess
           result = subprocess.run(
@@ -44,34 +50,56 @@ jobs:
           changed = [f for f in result.stdout.strip().splitlines() if f.endswith(".geojson")]
 
           if not changed:
-              print("No new GeoJSON files detected — nothing to upload.")
+              print("No GeoJSON files changed — nothing to upload.")
               sys.exit(0)
 
           for filepath in changed:
-              print(f"\nUploading: {filepath}")
-              layer_name = Path(filepath).stem.replace("-", " ").replace("_", " ").title()
+              print(f"\nProcessing: {filepath}")
+              stem       = Path(filepath).stem
+              meta_path  = meta_dir / f"{stem}.json"
+              layer_name = stem.replace("-", " ").replace("_", " ").title()
 
-              # Step 1: Request presigned S3 upload URL from Felt
-              r = requests.post(
-                  f"https://felt.com/api/v2/maps/{map_id}/upload",
-                  headers={
-                      "Authorization": f"Bearer {api_key}",
-                      "Content-Type": "application/json",
-                  },
-                  json={"name": layer_name},
-              )
+              # Check if we have a stored layer_id for this file
+              existing_layer_id = None
+              if meta_path.exists():
+                  try:
+                      existing_layer_id = json.loads(meta_path.read_text()).get("layer_id")
+                  except Exception:
+                      pass
+
+              if existing_layer_id:
+                  # Refresh the existing Felt layer in place
+                  print(f"  Refreshing existing layer {existing_layer_id}...")
+                  r = requests.post(
+                      f"https://felt.com/api/v2/maps/{map_id}/layers/{existing_layer_id}/refresh",
+                      headers={"Authorization": f"Bearer {api_key}"},
+                  )
+                  layer_id = existing_layer_id
+              else:
+                  # First upload — create a new layer
+                  print(f"  Creating new layer '{layer_name}'...")
+                  r = requests.post(
+                      f"https://felt.com/api/v2/maps/{map_id}/upload",
+                      headers={
+                          "Authorization": f"Bearer {api_key}",
+                          "Content-Type": "application/json",
+                      },
+                      json={"name": layer_name},
+                  )
+                  if r.ok:
+                      layer_id = r.json().get("layer_id", "unknown")
+                      meta_path.write_text(json.dumps({"layer_id": layer_id, "layer_name": layer_name}))
+
               if not r.ok:
                   print(f"  ERROR from Felt API ({r.status_code}): {r.text}", file=sys.stderr)
                   sys.exit(1)
 
-              data = r.json()
-              url  = data["url"]
+              data  = r.json()
+              url   = data["url"]
               attrs = data["presigned_attributes"]
-              layer_id = data.get("layer_id", "unknown")
-              print(f"  Layer ID: {layer_id}  |  Layer name: {layer_name}")
+              print(f"  Layer ID: {layer_id}")
 
-              # Step 2: Upload file to S3 using presigned URL
-              # Text fields must come before the file field
+              # Upload file to S3 using presigned URL (text fields must precede the file)
               with open(filepath, "rb") as f:
                   file_content = f.read()
 
@@ -80,10 +108,24 @@ jobs:
 
               s3 = requests.post(url, files=files)
               if s3.status_code == 204:
-                  print(f"  SUCCESS — layer '{layer_name}' uploaded (HTTP 204).")
+                  action = "refreshed" if existing_layer_id else "uploaded"
+                  print(f"  SUCCESS — layer {action} (HTTP 204).")
               else:
                   print(f"  ERROR uploading to S3 ({s3.status_code}): {s3.text}", file=sys.stderr)
                   sys.exit(1)
 
-          print("\nAll files uploaded successfully.")
+          print("\nAll files processed successfully.")
           PYEOF
+
+      - name: Commit layer metadata
+        run: |
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git remote set-url origin https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}
+          git add submissions/.meta/
+          if git diff --staged --quiet; then
+            echo "No new metadata to commit."
+          else
+            git commit -m "chore: store Felt layer IDs [skip ci]"
+            git push
+          fi
