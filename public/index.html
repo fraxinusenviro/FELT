@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Felt GeoJSON Uploader</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f4f4f6;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 14px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.1);
+      padding: 2.5rem 2rem;
+      width: 100%;
+      max-width: 520px;
+    }
+
+    .logo-row {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .logo-icon {
+      width: 36px;
+      height: 36px;
+      background: #e63946;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-weight: 800;
+      font-size: 1.1rem;
+      flex-shrink: 0;
+    }
+
+    h1 {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: #1a1a2e;
+    }
+
+    .subtitle {
+      font-size: 0.85rem;
+      color: #666;
+      margin-bottom: 1.8rem;
+    }
+
+    .target-map {
+      background: #f0f9ff;
+      border: 1px solid #bae6fd;
+      border-radius: 8px;
+      padding: 0.7rem 1rem;
+      margin-bottom: 1.5rem;
+      font-size: 0.82rem;
+      color: #0369a1;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .target-map a {
+      color: #0369a1;
+      font-weight: 600;
+      text-decoration: none;
+    }
+
+    .target-map a:hover { text-decoration: underline; }
+
+    label {
+      display: block;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: #444;
+      margin-bottom: 0.4rem;
+    }
+
+    input[type="text"] {
+      width: 100%;
+      padding: 0.6rem 0.8rem;
+      border: 1.5px solid #ddd;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      color: #222;
+      outline: none;
+      transition: border-color 0.2s;
+      margin-bottom: 1.2rem;
+    }
+
+    input[type="text"]:focus { border-color: #e63946; }
+
+    /* Drop zone */
+    .drop-zone {
+      border: 2.5px dashed #ccc;
+      border-radius: 10px;
+      padding: 2.2rem 1rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      margin-bottom: 1.4rem;
+      position: relative;
+    }
+
+    .drop-zone:hover,
+    .drop-zone.dragover {
+      border-color: #e63946;
+      background: #fff5f5;
+    }
+
+    .drop-zone.has-file {
+      border-color: #16a34a;
+      background: #f0fdf4;
+    }
+
+    .drop-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+
+    .drop-icon {
+      font-size: 2rem;
+      margin-bottom: 0.5rem;
+      display: block;
+    }
+
+    .drop-primary {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #333;
+    }
+
+    .drop-secondary {
+      font-size: 0.78rem;
+      color: #888;
+      margin-top: 0.3rem;
+    }
+
+    .file-name {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #16a34a;
+      margin-top: 0.5rem;
+      word-break: break-all;
+    }
+
+    /* Upload button */
+    button#uploadBtn {
+      width: 100%;
+      padding: 0.75rem;
+      background: #e63946;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.2s, opacity 0.2s;
+      letter-spacing: 0.01em;
+    }
+
+    button#uploadBtn:hover:not(:disabled) { background: #c1121f; }
+    button#uploadBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* Status area */
+    #status {
+      margin-top: 1.2rem;
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      font-size: 0.88rem;
+      display: none;
+    }
+
+    #status.info    { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+    #status.success { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+    #status.error   { background: #fff1f2; color: #be123c; border: 1px solid #fecdd3; }
+
+    #status .map-link {
+      display: inline-block;
+      margin-top: 0.5rem;
+      color: #15803d;
+      font-weight: 700;
+      text-decoration: none;
+    }
+
+    #status .map-link:hover { text-decoration: underline; }
+
+    /* Progress bar */
+    .progress-wrap {
+      height: 6px;
+      background: #e5e7eb;
+      border-radius: 99px;
+      overflow: hidden;
+      margin-top: 0.6rem;
+    }
+
+    .progress-bar {
+      height: 100%;
+      width: 0%;
+      background: #1d4ed8;
+      border-radius: 99px;
+      transition: width 0.3s;
+    }
+
+    #apiWarning {
+      background: #fffbeb;
+      border: 1px solid #fde68a;
+      color: #92400e;
+      border-radius: 8px;
+      padding: 0.65rem 1rem;
+      font-size: 0.82rem;
+      margin-bottom: 1.2rem;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo-row">
+      <div class="logo-icon">F</div>
+      <h1>Felt GeoJSON Uploader</h1>
+    </div>
+    <p class="subtitle">Upload a GeoJSON file directly to your Felt map as a new layer.</p>
+
+    <div id="apiWarning">
+      &#9888; Server is missing <code>FELT_API_KEY</code>. Set it in your <code>.env</code> file and restart.
+    </div>
+
+    <div class="target-map">
+      <span>&#128506;</span>
+      <span>Target map: <a href="https://felt.com/map/API-TESTING-z9BIC4uGlQfOXcwHwYGKwRC?share=1&loc=44.6489,-63.5753,14z" target="_blank" rel="noopener">API-TESTING</a></span>
+    </div>
+
+    <label for="layerName">Layer name</label>
+    <input type="text" id="layerName" placeholder="My GeoJSON Layer" />
+
+    <label>GeoJSON file</label>
+    <div class="drop-zone" id="dropZone">
+      <input type="file" id="fileInput" accept=".geojson,.json,application/geo+json,application/json" />
+      <span class="drop-icon">&#128196;</span>
+      <div class="drop-primary">Drop your GeoJSON file here</div>
+      <div class="drop-secondary">or click to browse &mdash; .geojson / .json, max 50 MB</div>
+      <div class="file-name" id="fileName"></div>
+    </div>
+
+    <button id="uploadBtn" disabled>Upload to Felt</button>
+
+    <div id="status"></div>
+  </div>
+
+  <script>
+    const dropZone   = document.getElementById("dropZone");
+    const fileInput  = document.getElementById("fileInput");
+    const fileName   = document.getElementById("fileName");
+    const uploadBtn  = document.getElementById("uploadBtn");
+    const statusEl   = document.getElementById("status");
+    const layerInput = document.getElementById("layerName");
+    const apiWarning = document.getElementById("apiWarning");
+
+    let selectedFile = null;
+
+    // Check server readiness
+    fetch("/api/config")
+      .then(r => r.json())
+      .then(cfg => { if (!cfg.ready) apiWarning.style.display = "block"; })
+      .catch(() => {});
+
+    // Drag-and-drop events
+    dropZone.addEventListener("dragover", e => { e.preventDefault(); dropZone.classList.add("dragover"); });
+    dropZone.addEventListener("dragleave", ()  => dropZone.classList.remove("dragover"));
+    dropZone.addEventListener("drop", e => {
+      e.preventDefault();
+      dropZone.classList.remove("dragover");
+      const file = e.dataTransfer.files[0];
+      if (file) setFile(file);
+    });
+
+    fileInput.addEventListener("change", () => {
+      if (fileInput.files[0]) setFile(fileInput.files[0]);
+    });
+
+    function setFile(file) {
+      selectedFile = file;
+      fileName.textContent = file.name;
+      dropZone.classList.add("has-file");
+      uploadBtn.disabled = false;
+      // Pre-fill layer name from filename if blank
+      if (!layerInput.value.trim()) {
+        layerInput.value = file.name.replace(/\.(geojson|json)$/i, "");
+      }
+      clearStatus();
+    }
+
+    function showStatus(type, html) {
+      statusEl.className = type;
+      statusEl.innerHTML = html;
+      statusEl.style.display = "block";
+    }
+
+    function clearStatus() {
+      statusEl.style.display = "none";
+      statusEl.innerHTML = "";
+    }
+
+    uploadBtn.addEventListener("click", async () => {
+      if (!selectedFile) return;
+
+      uploadBtn.disabled = true;
+      showStatus("info", `
+        <strong>Uploading&hellip;</strong> Requesting upload slot from Felt API.
+        <div class="progress-wrap"><div class="progress-bar" id="pBar" style="width:30%"></div></div>
+      `);
+
+      try {
+        const form = new FormData();
+        form.append("file", selectedFile, selectedFile.name);
+        form.append("layerName", layerInput.value.trim() || selectedFile.name);
+
+        // Update progress bar to mid-point while waiting for S3
+        setTimeout(() => {
+          const pb = document.getElementById("pBar");
+          if (pb) pb.style.width = "65%";
+        }, 800);
+
+        const res  = await fetch("/api/upload", { method: "POST", body: form });
+        const data = await res.json();
+
+        if (!res.ok || !data.success) {
+          showStatus("error", `<strong>Upload failed.</strong><br>${data.error || "Unknown error."}`);
+          uploadBtn.disabled = false;
+          return;
+        }
+
+        showStatus("success", `
+          <strong>&#10003; Layer uploaded successfully!</strong><br>
+          Layer <em>${escHtml(data.layerName)}</em> (ID: <code>${escHtml(data.layerId)}</code>) has been added to your map.<br>
+          <a class="map-link" href="${escHtml(data.mapUrl)}" target="_blank" rel="noopener">&#128279; Open map in Felt &rarr;</a>
+        `);
+
+        // Reset form
+        selectedFile = null;
+        fileInput.value = "";
+        fileName.textContent = "";
+        dropZone.classList.remove("has-file");
+        layerInput.value = "";
+        uploadBtn.disabled = true;
+
+      } catch (err) {
+        showStatus("error", `<strong>Network error.</strong><br>${err.message}`);
+        uploadBtn.disabled = false;
+      }
+    });
+
+    function escHtml(str) {
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+  </script>
+</body>
+</html>
