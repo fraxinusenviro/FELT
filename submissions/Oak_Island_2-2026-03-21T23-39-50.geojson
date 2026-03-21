@@ -95,6 +95,63 @@
           45.143002
         ]
       }
+    },
+    {
+      "type": "Feature",
+      "properties": {},
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -64.279804,
+            45.128959
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {},
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -64.274071,
+            45.134911
+          ],
+          [
+            -64.273215,
+            45.130186
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {},
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -64.273416,
+              45.129689
+            ],
+            [
+              -64.267072,
+              45.128375
+            ],
+            [
+              -64.275279,
+              45.127433
+            ],
+            [
+              -64.273416,
+              45.129689
+            ]
+          ]
+        ]
+      }
     }
   ]
 }
