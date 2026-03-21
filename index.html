@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Felt GeoJSON Uploader</title>
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Leaflet.draw -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --red:    #e63946;
+      --red-dk: #c1121f;
+      --blue:   #1d4ed8;
+      --green:  #16a34a;
+      --bg:     #f1f3f5;
+      --card:   #ffffff;
+      --border: #e2e8f0;
+      --text:   #1a202c;
+      --muted:  #64748b;
+    }
+
+    html, body { height: 100%; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+
+    /* ── Header ─────────────────────────────────────────── */
+    header {
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+      padding: 0 1.25rem;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+      z-index: 1000;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      font-weight: 700;
+      font-size: 1.05rem;
+      color: var(--text);
+      text-decoration: none;
+    }
+
+    .brand-icon {
+      width: 32px; height: 32px;
+      background: var(--red);
+      border-radius: 7px;
+      display: flex; align-items: center; justify-content: center;
+      color: #fff; font-weight: 900; font-size: 1rem;
+    }
+
+    .header-actions { display: flex; gap: 0.5rem; align-items: center; }
+
+    .btn-icon {
+      background: none; border: 1.5px solid var(--border);
+      border-radius: 8px; padding: 0.35rem 0.7rem;
+      font-size: 0.82rem; color: var(--muted);
+      cursor: pointer; transition: border-color 0.15s, color 0.15s;
+      display: flex; align-items: center; gap: 0.35rem;
+    }
+    .btn-icon:hover { border-color: var(--red); color: var(--red); }
+
+    .map-link-btn {
+      background: var(--red); border: none;
+      border-radius: 8px; padding: 0.4rem 0.9rem;
+      font-size: 0.82rem; font-weight: 600; color: #fff;
+      cursor: pointer; text-decoration: none;
+      display: flex; align-items: center; gap: 0.35rem;
+      transition: background 0.15s;
+    }
+    .map-link-btn:hover { background: var(--red-dk); }
+
+    /* ── Layout ─────────────────────────────────────────── */
+    .layout {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ── Sidebar ─────────────────────────────────────────── */
+    .sidebar {
+      width: 320px;
+      background: var(--card);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      flex-shrink: 0;
+    }
+
+    .sidebar-inner { padding: 1.25rem; flex: 1; }
+
+    .section-title {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--muted);
+      margin-bottom: 0.75rem;
+    }
+
+    /* Tabs */
+    .tabs { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 1rem; }
+    .tab {
+      flex: 1; padding: 0.6rem; text-align: center;
+      font-size: 0.83rem; font-weight: 600; color: var(--muted);
+      cursor: pointer; border-bottom: 2px solid transparent;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .tab.active { color: var(--red); border-bottom-color: var(--red); }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* Fields */
+    label {
+      display: block;
+      font-size: 0.8rem; font-weight: 600; color: var(--muted);
+      margin-bottom: 0.3rem; margin-top: 0.9rem;
+    }
+    label:first-child { margin-top: 0; }
+
+    input[type="text"], input[type="password"] {
+      width: 100%;
+      padding: 0.55rem 0.75rem;
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      font-size: 0.88rem; color: var(--text);
+      outline: none; transition: border-color 0.15s;
+      background: #fff;
+    }
+    input[type="text"]:focus,
+    input[type="password"]:focus { border-color: var(--red); }
+
+    /* Feature count badge */
+    .feature-count {
+      display: inline-flex; align-items: center; gap: 0.4rem;
+      background: #f0fdf4; border: 1px solid #bbf7d0;
+      color: var(--green); border-radius: 99px;
+      padding: 0.3rem 0.75rem; font-size: 0.8rem; font-weight: 700;
+      margin: 0.75rem 0;
+    }
+
+    .feature-count.empty {
+      background: #f8fafc; border-color: var(--border); color: var(--muted);
+    }
+
+    /* Feature list */
+    #featureList {
+      list-style: none;
+      max-height: 150px;
+      overflow-y: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 0.8rem;
+    }
+    #featureList li {
+      padding: 0.45rem 0.7rem;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 0.5rem;
+      color: var(--text);
+    }
+    #featureList li:last-child { border-bottom: none; }
+    #featureList li .geo-type {
+      font-size: 0.7rem; font-weight: 700;
+      background: var(--bg); border-radius: 4px;
+      padding: 0.1rem 0.4rem; color: var(--muted); flex-shrink: 0;
+    }
+
+    .btn-row { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
+
+    .btn-sm {
+      flex: 1; padding: 0.45rem;
+      background: var(--bg); border: 1.5px solid var(--border);
+      border-radius: 7px; font-size: 0.8rem; font-weight: 600;
+      color: var(--muted); cursor: pointer; transition: all 0.15s;
+    }
+    .btn-sm:hover:not(:disabled) { border-color: var(--red); color: var(--red); }
+    .btn-sm:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* Drop zone */
+    .drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: 10px;
+      padding: 1.8rem 1rem;
+      text-align: center; cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      position: relative;
+      margin-top: 0.75rem;
+    }
+    .drop-zone:hover, .drop-zone.dragover { border-color: var(--red); background: #fff5f5; }
+    .drop-zone.has-file { border-color: var(--green); background: #f0fdf4; }
+    .drop-zone input[type="file"] {
+      position: absolute; inset: 0; opacity: 0;
+      cursor: pointer; width: 100%; height: 100%;
+    }
+    .drop-icon { font-size: 1.8rem; display: block; margin-bottom: 0.4rem; }
+    .drop-primary { font-size: 0.88rem; font-weight: 600; color: var(--text); }
+    .drop-secondary { font-size: 0.75rem; color: var(--muted); margin-top: 0.2rem; }
+    .drop-filename { font-size: 0.82rem; font-weight: 600; color: var(--green); margin-top: 0.4rem; word-break: break-all; }
+
+    /* Submit button */
+    #submitBtn {
+      width: 100%; margin-top: 1.25rem;
+      padding: 0.75rem;
+      background: var(--red); color: #fff;
+      border: none; border-radius: 8px;
+      font-size: 0.95rem; font-weight: 700; cursor: pointer;
+      transition: background 0.15s, opacity 0.15s;
+      letter-spacing: 0.01em;
+    }
+    #submitBtn:hover:not(:disabled) { background: var(--red-dk); }
+    #submitBtn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    /* Status */
+    #status {
+      margin-top: 1rem;
+      border-radius: 8px;
+      padding: 0.75rem 0.85rem;
+      font-size: 0.82rem;
+      line-height: 1.5;
+      display: none;
+    }
+    #status.info    { background: #eff6ff; color: var(--blue); border: 1px solid #bfdbfe; }
+    #status.success { background: #f0fdf4; color: var(--green); border: 1px solid #bbf7d0; }
+    #status.error   { background: #fff1f2; color: #be123c; border: 1px solid #fecdd3; }
+    #status a { color: inherit; font-weight: 700; }
+
+    /* ── Map ─────────────────────────────────────────────── */
+    #map {
+      flex: 1;
+      min-height: 0;
+    }
+
+    /* ── Settings Modal ───────────────────────────────────── */
+    .modal-backdrop {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.45);
+      display: none; align-items: center; justify-content: center;
+      z-index: 9000;
+    }
+    .modal-backdrop.open { display: flex; }
+
+    .modal {
+      background: var(--card);
+      border-radius: 14px;
+      padding: 2rem;
+      width: 100%; max-width: 480px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+    }
+
+    .modal h2 { font-size: 1.15rem; margin-bottom: 0.25rem; }
+    .modal p  { font-size: 0.82rem; color: var(--muted); margin-bottom: 1.25rem; line-height: 1.5; }
+
+    .modal label { margin-top: 1rem; }
+    .modal label:first-of-type { margin-top: 0; }
+
+    .pw-wrap { position: relative; }
+    .pw-wrap input { padding-right: 2.5rem; }
+    .pw-toggle {
+      position: absolute; right: 0.6rem; top: 50%;
+      transform: translateY(-50%);
+      background: none; border: none; cursor: pointer;
+      color: var(--muted); font-size: 0.9rem;
+    }
+
+    .modal-footer { display: flex; gap: 0.75rem; margin-top: 1.5rem; justify-content: flex-end; }
+    .btn-secondary {
+      padding: 0.55rem 1.1rem; border-radius: 8px;
+      font-size: 0.88rem; font-weight: 600; cursor: pointer;
+      background: var(--bg); border: 1.5px solid var(--border); color: var(--muted);
+      transition: all 0.15s;
+    }
+    .btn-secondary:hover { border-color: var(--red); color: var(--red); }
+    .btn-primary {
+      padding: 0.55rem 1.2rem; border-radius: 8px;
+      font-size: 0.88rem; font-weight: 700; cursor: pointer;
+      background: var(--red); border: none; color: #fff;
+      transition: background 0.15s;
+    }
+    .btn-primary:hover { background: var(--red-dk); }
+
+    /* Setup warning banner */
+    #setupBanner {
+      background: #fffbeb; border-bottom: 1px solid #fde68a;
+      color: #92400e; padding: 0.6rem 1.25rem;
+      font-size: 0.8rem; display: none; flex-shrink: 0;
+    }
+    #setupBanner button {
+      background: none; border: none; color: #92400e;
+      font-weight: 700; cursor: pointer; text-decoration: underline;
+    }
+
+    /* Responsive */
+    @media (max-width: 640px) {
+      .sidebar { width: 100%; max-height: 50vh; border-right: none; border-bottom: 1px solid var(--border); }
+      .layout { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────── -->
+<header>
+  <div class="brand">
+    <div class="brand-icon">F</div>
+    Felt GeoJSON Uploader
+  </div>
+  <div class="header-actions">
+    <button class="btn-icon" id="settingsBtn">&#9881; Settings</button>
+    <a class="map-link-btn"
+       href="https://felt.com/map/API-TESTING-z9BIC4uGlQfOXcwHwYGKwRC?share=1&loc=44.6489,-63.5753,14z"
+       target="_blank" rel="noopener">
+      &#128279; Open in Felt
+    </a>
+  </div>
+</header>
+
+<!-- ── Setup warning ──────────────────────────────────────── -->
+<div id="setupBanner">
+  &#9888;&nbsp; GitHub settings not configured — uploads won't work until you
+  <button id="setupBannerBtn">configure them</button>.
+</div>
+
+<!-- ── Main layout ────────────────────────────────────────── -->
+<div class="layout">
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-inner">
+
+      <!-- Tabs -->
+      <div class="tabs">
+        <div class="tab active" data-tab="draw">&#9998; Draw</div>
+        <div class="tab" data-tab="upload">&#128196; Upload File</div>
+      </div>
+
+      <!-- ── Draw tab ─────────────────────────────────────── -->
+      <div class="tab-panel active" id="tab-draw">
+        <div class="section-title">Layer name</div>
+        <input type="text" id="layerNameDraw" placeholder="My drawn layer" />
+
+        <label style="margin-top:1rem;">Drawn features</label>
+        <div id="featureCountDraw" class="feature-count empty">0 features drawn</div>
+        <ul id="featureList"></ul>
+
+        <div class="btn-row">
+          <button class="btn-sm" id="undoBtn" disabled>&#8617; Undo last</button>
+          <button class="btn-sm" id="clearBtn" disabled>&#128465; Clear all</button>
+        </div>
+
+        <p style="font-size:0.75rem;color:var(--muted);margin-top:0.75rem;line-height:1.5;">
+          Use the toolbar on the map to draw polygons, lines, or points.
+          All drawn features will be collected as a single GeoJSON layer.
+        </p>
+      </div>
+
+      <!-- ── Upload tab ──────────────────────────────────── -->
+      <div class="tab-panel" id="tab-upload">
+        <div class="section-title">Layer name</div>
+        <input type="text" id="layerNameUpload" placeholder="My uploaded layer" />
+
+        <div class="drop-zone" id="dropZone">
+          <input type="file" id="fileInput" accept=".geojson,.json,application/geo+json,application/json" />
+          <span class="drop-icon">&#128196;</span>
+          <div class="drop-primary">Drop GeoJSON here</div>
+          <div class="drop-secondary">or click to browse &mdash; .geojson / .json, max 50 MB</div>
+          <div class="drop-filename" id="uploadFileName"></div>
+        </div>
+      </div>
+
+      <!-- Submit -->
+      <button id="submitBtn" disabled>Submit to Felt</button>
+
+      <div id="status"></div>
+
+    </div><!-- /sidebar-inner -->
+  </div><!-- /sidebar -->
+
+  <!-- Map -->
+  <div id="map"></div>
+
+</div><!-- /layout -->
+
+<!-- ── Settings modal ─────────────────────────────────────── -->
+<div class="modal-backdrop" id="modalBackdrop">
+  <div class="modal">
+    <h2>&#9881; GitHub Settings</h2>
+    <p>
+      Because this app runs on GitHub Pages (static hosting), uploads are routed
+      through a GitHub Actions workflow that holds your Felt API key securely.<br><br>
+      You need a
+      <strong>fine-grained Personal Access Token</strong> with
+      <em>Contents: Read &amp; Write</em> permission on this repository.
+      Your Felt API key stays in <strong>GitHub Secrets</strong> — it never
+      reaches this page.
+    </p>
+
+    <label for="cfgOwner">Repository owner (GitHub username or org)</label>
+    <input type="text" id="cfgOwner" placeholder="e.g. fraxinusenviro" />
+
+    <label for="cfgRepo">Repository name</label>
+    <input type="text" id="cfgRepo" placeholder="e.g. FELT" />
+
+    <label for="cfgBranch">Branch to commit to</label>
+    <input type="text" id="cfgBranch" placeholder="main" />
+
+    <label for="cfgToken">GitHub Personal Access Token</label>
+    <div class="pw-wrap">
+      <input type="password" id="cfgToken" placeholder="github_pat_…" />
+      <button class="pw-toggle" id="tokenToggle" type="button" title="Show/hide token">&#128065;</button>
+    </div>
+
+    <p style="margin-top:0.75rem;font-size:0.75rem;color:var(--muted);">
+      Settings are stored in <code>localStorage</code> on this device only.
+      The token is used solely to commit GeoJSON files to your repository.
+    </p>
+
+    <div class="modal-footer">
+      <button class="btn-secondary" id="modalCancel">Cancel</button>
+      <button class="btn-primary" id="modalSave">Save settings</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ════════════════════════════════════════════════════════════
+   Config & constants
+═══════════════════════════════════════════════════════════════ */
+const FELT_MAP_URL =
+  "https://felt.com/map/API-TESTING-z9BIC4uGlQfOXcwHwYGKwRC?share=1&loc=44.6489,-63.5753,14z";
+const SUBMISSIONS_PATH = "submissions";
+
+/* ════════════════════════════════════════════════════════════
+   LocalStorage helpers
+═══════════════════════════════════════════════════════════════ */
+const LS = {
+  get: k => localStorage.getItem("felt_" + k) || "",
+  set: (k, v) => localStorage.setItem("felt_" + k, v),
+};
+
+/* ════════════════════════════════════════════════════════════
+   Settings modal
+═══════════════════════════════════════════════════════════════ */
+const backdrop    = document.getElementById("modalBackdrop");
+const cfgOwner    = document.getElementById("cfgOwner");
+const cfgRepo     = document.getElementById("cfgRepo");
+const cfgBranch   = document.getElementById("cfgBranch");
+const cfgToken    = document.getElementById("cfgToken");
+const setupBanner = document.getElementById("setupBanner");
+
+function loadSettings() {
+  cfgOwner.value  = LS.get("owner");
+  cfgRepo.value   = LS.get("repo");
+  cfgBranch.value = LS.get("branch") || "main";
+  cfgToken.value  = LS.get("token");
+  checkSetup();
+}
+
+function checkSetup() {
+  const ready = LS.get("owner") && LS.get("repo") && LS.get("token");
+  setupBanner.style.display = ready ? "none" : "block";
+  return Boolean(ready);
+}
+
+document.getElementById("settingsBtn").addEventListener("click", () => {
+  loadSettings();
+  backdrop.classList.add("open");
+});
+document.getElementById("setupBannerBtn").addEventListener("click", () => {
+  loadSettings();
+  backdrop.classList.add("open");
+});
+document.getElementById("modalCancel").addEventListener("click", () => backdrop.classList.remove("open"));
+backdrop.addEventListener("click", e => { if (e.target === backdrop) backdrop.classList.remove("open"); });
+
+document.getElementById("modalSave").addEventListener("click", () => {
+  LS.set("owner",  cfgOwner.value.trim());
+  LS.set("repo",   cfgRepo.value.trim());
+  LS.set("branch", cfgBranch.value.trim() || "main");
+  LS.set("token",  cfgToken.value.trim());
+  backdrop.classList.remove("open");
+  checkSetup();
+  updateSubmitBtn();
+});
+
+document.getElementById("tokenToggle").addEventListener("click", () => {
+  cfgToken.type = cfgToken.type === "password" ? "text" : "password";
+});
+
+/* ════════════════════════════════════════════════════════════
+   Leaflet map setup
+═══════════════════════════════════════════════════════════════ */
+const map = L.map("map").setView([44.6489, -63.5753], 14);
+
+L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/">CARTO</a>',
+  maxZoom: 19,
+}).addTo(map);
+
+// Drawn items layer
+const drawnItems = new L.FeatureGroup();
+map.addLayer(drawnItems);
+
+// Draw control
+const drawControl = new L.Control.Draw({
+  position: "topleft",
+  draw: {
+    polygon:   { shapeOptions: { color: "#e63946" } },
+    polyline:  { shapeOptions: { color: "#1d4ed8" } },
+    rectangle: { shapeOptions: { color: "#e63946" }, showArea: false },
+    circle:    false,
+    circlemarker: false,
+    marker: true,
+  },
+  edit: {
+    featureGroup: drawnItems,
+    remove: true,
+  },
+});
+map.addControl(drawControl);
+
+// Feature tracking
+let featureHistory = [];  // for undo
+
+map.on(L.Draw.Event.CREATED, e => {
+  drawnItems.addLayer(e.layer);
+  featureHistory.push(e.layer);
+  updateFeatureList();
+});
+
+map.on(L.Draw.Event.DELETED, () => {
+  // Sync history with remaining layers
+  featureHistory = featureHistory.filter(l => drawnItems.hasLayer(l));
+  updateFeatureList();
+});
+
+map.on(L.Draw.Event.EDITED, () => updateFeatureList());
+
+/* ════════════════════════════════════════════════════════════
+   Feature list UI
+═══════════════════════════════════════════════════════════════ */
+function updateFeatureList() {
+  const layers = [];
+  drawnItems.eachLayer(l => layers.push(l));
+  const count = layers.length;
+
+  const badge = document.getElementById("featureCountDraw");
+  badge.textContent = count === 0 ? "0 features drawn" : `${count} feature${count !== 1 ? "s" : ""} drawn`;
+  badge.classList.toggle("empty", count === 0);
+
+  const list = document.getElementById("featureList");
+  list.innerHTML = "";
+  layers.forEach((l, i) => {
+    const type = l instanceof L.Marker ? "Point"
+                : l instanceof L.Polyline && !(l instanceof L.Polygon) ? "LineString"
+                : "Polygon";
+    const li = document.createElement("li");
+    li.innerHTML = `<span class="geo-type">${type}</span> Feature ${i + 1}`;
+    list.appendChild(li);
+  });
+
+  document.getElementById("undoBtn").disabled = count === 0;
+  document.getElementById("clearBtn").disabled = count === 0;
+  updateSubmitBtn();
+}
+
+document.getElementById("undoBtn").addEventListener("click", () => {
+  if (featureHistory.length === 0) return;
+  const last = featureHistory.pop();
+  drawnItems.removeLayer(last);
+  updateFeatureList();
+});
+
+document.getElementById("clearBtn").addEventListener("click", () => {
+  if (!confirm("Remove all drawn features?")) return;
+  drawnItems.clearLayers();
+  featureHistory = [];
+  updateFeatureList();
+});
+
+/* ════════════════════════════════════════════════════════════
+   Tabs
+═══════════════════════════════════════════════════════════════ */
+let activeTab = "draw";
+let uploadedGeojson = null;
+
+document.querySelectorAll(".tab").forEach(tab => {
+  tab.addEventListener("click", () => {
+    activeTab = tab.dataset.tab;
+    document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+    document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+    tab.classList.add("active");
+    document.getElementById("tab-" + activeTab).classList.add("active");
+    updateSubmitBtn();
+  });
+});
+
+/* ════════════════════════════════════════════════════════════
+   File upload tab
+═══════════════════════════════════════════════════════════════ */
+const dropZone  = document.getElementById("dropZone");
+const fileInput = document.getElementById("fileInput");
+const fileLabel = document.getElementById("uploadFileName");
+
+dropZone.addEventListener("dragover", e => { e.preventDefault(); dropZone.classList.add("dragover"); });
+dropZone.addEventListener("dragleave", () => dropZone.classList.remove("dragover"));
+dropZone.addEventListener("drop", e => {
+  e.preventDefault();
+  dropZone.classList.remove("dragover");
+  if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener("change", () => { if (fileInput.files[0]) loadFile(fileInput.files[0]); });
+
+function loadFile(file) {
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const gj = JSON.parse(ev.target.result);
+      if (!gj.type) throw new Error("Not valid GeoJSON");
+      uploadedGeojson = gj;
+      fileLabel.textContent = file.name;
+      dropZone.classList.add("has-file");
+      const nameInput = document.getElementById("layerNameUpload");
+      if (!nameInput.value.trim()) {
+        nameInput.value = file.name.replace(/\.(geojson|json)$/i, "");
+      }
+      // Preview on map
+      previewGeojson(gj);
+      updateSubmitBtn();
+      clearStatus();
+    } catch (err) {
+      showStatus("error", "Invalid GeoJSON: " + err.message);
+    }
+  };
+  reader.readAsText(file);
+}
+
+// Preview uploaded GeoJSON on the map (non-editable)
+let previewLayer = null;
+function previewGeojson(gj) {
+  if (previewLayer) map.removeLayer(previewLayer);
+  try {
+    previewLayer = L.geoJSON(gj, {
+      style: { color: "#1d4ed8", weight: 2, fillOpacity: 0.15 },
+      pointToLayer: (_, latlng) => L.circleMarker(latlng, { radius: 6, color: "#1d4ed8", fillOpacity: 0.7 }),
+    }).addTo(map);
+    if (previewLayer.getBounds().isValid()) map.fitBounds(previewLayer.getBounds(), { padding: [30, 30] });
+  } catch (_) {}
+}
+
+/* ════════════════════════════════════════════════════════════
+   Submit button state
+═══════════════════════════════════════════════════════════════ */
+function updateSubmitBtn() {
+  const hasData = activeTab === "draw"
+    ? drawnItems.getLayers().length > 0
+    : uploadedGeojson !== null;
+  document.getElementById("submitBtn").disabled = !hasData;
+}
+
+/* ════════════════════════════════════════════════════════════
+   Status helpers
+═══════════════════════════════════════════════════════════════ */
+function showStatus(type, html) {
+  const el = document.getElementById("status");
+  el.className = type;
+  el.innerHTML = html;
+  el.style.display = "block";
+}
+function clearStatus() {
+  const el = document.getElementById("status");
+  el.style.display = "none";
+}
+
+/* ════════════════════════════════════════════════════════════
+   GeoJSON builder (drawn features → FeatureCollection)
+═══════════════════════════════════════════════════════════════ */
+function buildGeojson() {
+  const features = [];
+  drawnItems.eachLayer(layer => {
+    const gj = layer.toGeoJSON();
+    features.push(gj);
+  });
+  return { type: "FeatureCollection", features };
+}
+
+/* ════════════════════════════════════════════════════════════
+   GitHub API — commit file to trigger Actions workflow
+═══════════════════════════════════════════════════════════════ */
+async function commitToGitHub(geojson, layerName) {
+  const owner  = LS.get("owner");
+  const repo   = LS.get("repo");
+  const branch = LS.get("branch") || "main";
+  const token  = LS.get("token");
+
+  if (!owner || !repo || !token) throw new Error("GitHub settings not configured.");
+
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  const safeName  = layerName.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 60);
+  const filename  = `${safeName}-${timestamp}.geojson`;
+  const path      = `${SUBMISSIONS_PATH}/${filename}`;
+  const content   = btoa(unescape(encodeURIComponent(JSON.stringify(geojson, null, 2))));
+
+  const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
+  const res = await fetch(apiUrl, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+    },
+    body: JSON.stringify({
+      message: `Upload GeoJSON layer: ${layerName}`,
+      content,
+      branch,
+    }),
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(`GitHub API error (${res.status}): ${body.message || res.statusText}`);
+  }
+
+  const data = await res.json();
+  const runUrl = `https://github.com/${owner}/${repo}/actions`;
+  return { filename, runUrl };
+}
+
+/* ════════════════════════════════════════════════════════════
+   Submit handler
+═══════════════════════════════════════════════════════════════ */
+document.getElementById("submitBtn").addEventListener("click", async () => {
+  if (!checkSetup()) {
+    loadSettings();
+    backdrop.classList.add("open");
+    return;
+  }
+
+  const layerName = activeTab === "draw"
+    ? (document.getElementById("layerNameDraw").value.trim() || "Drawn Layer")
+    : (document.getElementById("layerNameUpload").value.trim() || "Uploaded Layer");
+
+  const geojson = activeTab === "draw" ? buildGeojson() : uploadedGeojson;
+  if (!geojson) return;
+
+  const btn = document.getElementById("submitBtn");
+  btn.disabled = true;
+  showStatus("info", "&#128196; Committing GeoJSON to GitHub — this will trigger the upload workflow&hellip;");
+
+  try {
+    const { filename, runUrl } = await commitToGitHub(geojson, layerName);
+
+    showStatus("success", `
+      <strong>&#10003; Submitted!</strong><br>
+      <code>${filename}</code> committed to your repository.<br>
+      The <strong>GitHub Actions workflow</strong> will now upload it to your Felt map
+      using the <code>FELT_API_KEY</code> secret.<br><br>
+      <a href="${escHtml(runUrl)}" target="_blank" rel="noopener">&#128279; Watch the Actions run &rarr;</a>
+      &nbsp;&nbsp;
+      <a href="${escHtml(FELT_MAP_URL)}" target="_blank" rel="noopener">&#128506; Open Felt map &rarr;</a>
+    `);
+
+    // Reset
+    if (activeTab === "draw") {
+      drawnItems.clearLayers();
+      featureHistory = [];
+      updateFeatureList();
+      document.getElementById("layerNameDraw").value = "";
+    } else {
+      uploadedGeojson = null;
+      fileInput.value = "";
+      fileLabel.textContent = "";
+      dropZone.classList.remove("has-file");
+      document.getElementById("layerNameUpload").value = "";
+      if (previewLayer) { map.removeLayer(previewLayer); previewLayer = null; }
+    }
+    btn.disabled = true;
+  } catch (err) {
+    showStatus("error", `<strong>Error:</strong> ${escHtml(err.message)}`);
+    btn.disabled = false;
+  }
+});
+
+/* ════════════════════════════════════════════════════════════
+   Utilities
+═══════════════════════════════════════════════════════════════ */
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+/* ════════════════════════════════════════════════════════════
+   Init
+═══════════════════════════════════════════════════════════════ */
+checkSetup();
+updateFeatureList();
+</script>
+</body>
+</html>

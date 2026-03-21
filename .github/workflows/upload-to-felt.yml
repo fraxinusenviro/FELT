@@ -1,0 +1,89 @@
+name: Upload GeoJSON to Felt
+
+on:
+  push:
+    paths:
+      - "submissions/*.geojson"
+    branches: [main]
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install requests
+        run: pip install requests
+
+      - name: Find new GeoJSON files and upload to Felt
+        env:
+          FELT_API_KEY: ${{ secrets.FELT_API_KEY }}
+          FELT_MAP_ID: "z9BIC4uGlQfOXcwHwYGKwRC"
+        run: |
+          python - <<'PYEOF'
+          import os, json, sys, requests
+          from pathlib import Path
+
+          api_key = os.environ["FELT_API_KEY"]
+          map_id  = os.environ["FELT_MAP_ID"]
+
+          # Find GeoJSON files added or modified in the latest commit
+          import subprocess
+          result = subprocess.run(
+              ["git", "diff", "--name-only", "--diff-filter=AM", "HEAD~1", "HEAD"],
+              capture_output=True, text=True
+          )
+          changed = [f for f in result.stdout.strip().splitlines() if f.endswith(".geojson")]
+
+          if not changed:
+              print("No new GeoJSON files detected — nothing to upload.")
+              sys.exit(0)
+
+          for filepath in changed:
+              print(f"\nUploading: {filepath}")
+              layer_name = Path(filepath).stem.replace("-", " ").replace("_", " ").title()
+
+              # Step 1: Request presigned S3 upload URL from Felt
+              r = requests.post(
+                  f"https://felt.com/api/v2/maps/{map_id}/upload",
+                  headers={
+                      "Authorization": f"Bearer {api_key}",
+                      "Content-Type": "application/json",
+                  },
+                  json={"name": layer_name},
+              )
+              if not r.ok:
+                  print(f"  ERROR from Felt API ({r.status_code}): {r.text}", file=sys.stderr)
+                  sys.exit(1)
+
+              data = r.json()
+              url  = data["url"]
+              attrs = data["presigned_attributes"]
+              layer_id = data.get("layer_id", "unknown")
+              print(f"  Layer ID: {layer_id}  |  Layer name: {layer_name}")
+
+              # Step 2: Upload file to S3 using presigned URL
+              # Text fields must come before the file field
+              with open(filepath, "rb") as f:
+                  file_content = f.read()
+
+              files = {k: (None, v) for k, v in attrs.items()}
+              files["file"] = ("data.geojson", file_content, "application/geo+json")
+
+              s3 = requests.post(url, files=files)
+              if s3.status_code == 204:
+                  print(f"  SUCCESS — layer '{layer_name}' uploaded (HTTP 204).")
+              else:
+                  print(f"  ERROR uploading to S3 ({s3.status_code}): {s3.text}", file=sys.stderr)
+                  sys.exit(1)
+
+          print("\nAll files uploaded successfully.")
+          PYEOF
