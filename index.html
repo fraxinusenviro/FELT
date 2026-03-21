@@ -186,6 +186,18 @@
       background: var(--bg); border-radius: 4px;
       padding: 0.1rem 0.4rem; color: var(--muted); flex-shrink: 0;
     }
+    #featureList li.is-submitted { opacity: 0.55; }
+    .geo-type.is-submitted { background: #e2e8f0; color: #94a3b8; }
+    .geo-type.is-new { background: #fef3c7; color: #b45309; }
+
+    #sessionReset {
+      font-size: 0.74rem; color: var(--muted); margin-top: 0.3rem; display: none;
+    }
+    #sessionReset button {
+      background: none; border: none; color: var(--muted); cursor: pointer;
+      font-size: 0.74rem; text-decoration: underline; padding: 0;
+    }
+    #sessionReset button:hover { color: var(--red); }
 
     .btn-row { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
 
@@ -360,18 +372,21 @@
         <div class="section-title">Layer name</div>
         <input type="text" id="layerNameDraw" placeholder="My drawn layer" />
 
-        <label style="margin-top:1rem;">Drawn features</label>
-        <div id="featureCountDraw" class="feature-count empty">0 features drawn</div>
+        <label style="margin-top:1rem;">Features</label>
+        <div id="featureCountDraw" class="feature-count empty">0 features</div>
+        <div id="sessionReset">
+          <button id="newSessionBtn">Start new session</button>
+        </div>
         <ul id="featureList"></ul>
 
         <div class="btn-row">
           <button class="btn-sm" id="undoBtn" disabled>&#8617; Undo last</button>
-          <button class="btn-sm" id="clearBtn" disabled>&#128465; Clear all</button>
+          <button class="btn-sm" id="clearBtn" disabled>&#128465; Clear new</button>
         </div>
 
         <p style="font-size:0.75rem;color:var(--muted);margin-top:0.75rem;line-height:1.5;">
           Use the toolbar on the map to draw polygons, lines, or points.
-          All drawn features will be collected as a single GeoJSON layer.
+          Submitted features remain on the map in gray; new drawings sync on next submit.
         </p>
       </div>
 
@@ -457,6 +472,7 @@ const SUBMISSIONS_PATH = "submissions";
 const LS = {
   get: k => localStorage.getItem("felt_" + k) || "",
   set: (k, v) => localStorage.setItem("felt_" + k, v),
+  del: k => localStorage.removeItem("felt_" + k),
 };
 
 /* ════════════════════════════════════════════════════════════
@@ -518,7 +534,14 @@ L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
   maxZoom: 19,
 }).addTo(map);
 
-// Drawn items layer
+// Submitted features layer (gray, non-editable, renders behind drawn items)
+const submittedLayer = L.geoJSON(null, {
+  style: { color: "#94a3b8", weight: 1.5, fillOpacity: 0.08, dashArray: "5 4" },
+  pointToLayer: (_, latlng) =>
+    L.circleMarker(latlng, { radius: 6, color: "#94a3b8", fillOpacity: 0.5 }),
+}).addTo(map);
+
+// Drawn items layer (active, editable)
 const drawnItems = new L.FeatureGroup();
 map.addLayer(drawnItems);
 
@@ -550,7 +573,6 @@ map.on(L.Draw.Event.CREATED, e => {
 });
 
 map.on(L.Draw.Event.DELETED, () => {
-  // Sync history with remaining layers
   featureHistory = featureHistory.filter(l => drawnItems.hasLayer(l));
   updateFeatureList();
 });
@@ -558,30 +580,111 @@ map.on(L.Draw.Event.DELETED, () => {
 map.on(L.Draw.Event.EDITED, () => updateFeatureList());
 
 /* ════════════════════════════════════════════════════════════
+   Session state — previously submitted features
+═══════════════════════════════════════════════════════════════ */
+let submittedFeatures = [];   // GeoJSON Feature objects
+let submittedFilePath  = null; // "submissions/xxx.geojson"
+let submittedFileSha   = null; // GitHub blob SHA (needed to update the file)
+
+function loadPersistedSubmission() {
+  const saved = LS.get("submission");
+  if (!saved) return;
+  try {
+    const { features, path, sha } = JSON.parse(saved);
+    submittedFeatures = features || [];
+    submittedFilePath = path || null;
+    submittedFileSha  = sha  || null;
+    renderSubmittedLayer();
+  } catch (_) {}
+}
+
+function saveSubmission(features, path, sha) {
+  submittedFeatures = features;
+  submittedFilePath = path;
+  submittedFileSha  = sha;
+  LS.set("submission", JSON.stringify({ features, path, sha }));
+  renderSubmittedLayer();
+}
+
+function clearSubmission() {
+  submittedFeatures = [];
+  submittedFilePath = null;
+  submittedFileSha  = null;
+  LS.del("submission");
+  submittedLayer.clearLayers();
+  updateFeatureList();
+}
+
+function renderSubmittedLayer() {
+  submittedLayer.clearLayers();
+  if (submittedFeatures.length > 0) {
+    L.geoJSON({ type: "FeatureCollection", features: submittedFeatures }, {
+      style: { color: "#94a3b8", weight: 1.5, fillOpacity: 0.08, dashArray: "5 4" },
+      pointToLayer: (_, latlng) =>
+        L.circleMarker(latlng, { radius: 6, color: "#94a3b8", fillOpacity: 0.5 }),
+    }).eachLayer(l => submittedLayer.addLayer(l));
+  }
+  updateFeatureList();
+}
+
+/* ════════════════════════════════════════════════════════════
    Feature list UI
 ═══════════════════════════════════════════════════════════════ */
 function updateFeatureList() {
-  const layers = [];
-  drawnItems.eachLayer(l => layers.push(l));
-  const count = layers.length;
+  const newLayers = [];
+  drawnItems.eachLayer(l => newLayers.push(l));
+  const newCount = newLayers.length;
+  const subCount = submittedFeatures.length;
+  const total    = subCount + newCount;
 
   const badge = document.getElementById("featureCountDraw");
-  badge.textContent = count === 0 ? "0 features drawn" : `${count} feature${count !== 1 ? "s" : ""} drawn`;
-  badge.classList.toggle("empty", count === 0);
+  if (total === 0) {
+    badge.textContent = "0 features";
+    badge.classList.add("empty");
+  } else {
+    const parts = [];
+    if (subCount > 0) parts.push(`${subCount} submitted`);
+    if (newCount > 0) parts.push(`${newCount} new`);
+    badge.textContent = parts.join(" · ");
+    badge.classList.remove("empty");
+  }
+
+  document.getElementById("sessionReset").style.display = subCount > 0 ? "block" : "none";
 
   const list = document.getElementById("featureList");
   list.innerHTML = "";
-  layers.forEach((l, i) => {
-    const type = l instanceof L.Marker ? "Point"
-                : l instanceof L.Polyline && !(l instanceof L.Polygon) ? "LineString"
+
+  // Previously submitted features (dimmed)
+  submittedFeatures.forEach((f, i) => {
+    const rawType = f.geometry?.type || "";
+    const label = rawType === "Point" ? "Point"
+                : rawType.includes("Line") ? "Line"
                 : "Polygon";
     const li = document.createElement("li");
-    li.innerHTML = `<span class="geo-type">${type}</span> Feature ${i + 1}`;
+    li.classList.add("is-submitted");
+    li.innerHTML = `<span class="geo-type is-submitted">${label}</span> Feature ${i + 1}`;
     list.appendChild(li);
   });
 
-  document.getElementById("undoBtn").disabled = count === 0;
-  document.getElementById("clearBtn").disabled = count === 0;
+  // New drawings
+  newLayers.forEach((l, i) => {
+    const type = l instanceof L.Marker ? "Point"
+               : l instanceof L.Polyline && !(l instanceof L.Polygon) ? "Line"
+               : "Polygon";
+    const li = document.createElement("li");
+    li.innerHTML = `<span class="geo-type is-new">${type}</span> New ${i + 1}`;
+    list.appendChild(li);
+  });
+
+  document.getElementById("undoBtn").disabled = newCount === 0;
+  document.getElementById("clearBtn").disabled = newCount === 0;
+
+  // Update submit button label
+  const submitBtn = document.getElementById("submitBtn");
+  submitBtn.textContent = (submittedFileSha && newCount > 0)
+    ? "Sync changes to Felt"
+    : "Submit to Felt";
+
   updateSubmitBtn();
 }
 
@@ -593,10 +696,15 @@ document.getElementById("undoBtn").addEventListener("click", () => {
 });
 
 document.getElementById("clearBtn").addEventListener("click", () => {
-  if (!confirm("Remove all drawn features?")) return;
+  if (!confirm("Remove new drawings?")) return;
   drawnItems.clearLayers();
   featureHistory = [];
   updateFeatureList();
+});
+
+document.getElementById("newSessionBtn").addEventListener("click", () => {
+  if (!confirm("Start a new session? Submitted features will be removed from this view (they remain on your Felt map).")) return;
+  clearSubmission();
 });
 
 /* ════════════════════════════════════════════════════════════
@@ -645,7 +753,6 @@ function loadFile(file) {
       if (!nameInput.value.trim()) {
         nameInput.value = file.name.replace(/\.(geojson|json)$/i, "");
       }
-      // Preview on map
       previewGeojson(gj);
       updateSubmitBtn();
       clearStatus();
@@ -656,7 +763,6 @@ function loadFile(file) {
   reader.readAsText(file);
 }
 
-// Preview uploaded GeoJSON on the map (non-editable)
 let previewLayer = null;
 function previewGeojson(gj) {
   if (previewLayer) map.removeLayer(previewLayer);
@@ -694,21 +800,18 @@ function clearStatus() {
 }
 
 /* ════════════════════════════════════════════════════════════
-   GeoJSON builder (drawn features → FeatureCollection)
+   GeoJSON builder — combines submitted + new drawn features
 ═══════════════════════════════════════════════════════════════ */
 function buildGeojson() {
-  const features = [];
-  drawnItems.eachLayer(layer => {
-    const gj = layer.toGeoJSON();
-    features.push(gj);
-  });
+  const features = [...submittedFeatures];
+  drawnItems.eachLayer(layer => features.push(layer.toGeoJSON()));
   return { type: "FeatureCollection", features };
 }
 
 /* ════════════════════════════════════════════════════════════
-   GitHub API — commit file to trigger Actions workflow
+   GitHub API — create or update file to trigger Actions workflow
 ═══════════════════════════════════════════════════════════════ */
-async function commitToGitHub(geojson, layerName) {
+async function commitToGitHub(geojson, layerName, existingPath, existingSha) {
   const owner  = LS.get("owner");
   const repo   = LS.get("repo");
   const branch = LS.get("branch") || "main";
@@ -716,11 +819,26 @@ async function commitToGitHub(geojson, layerName) {
 
   if (!owner || !repo || !token) throw new Error("GitHub settings not configured.");
 
-  const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-  const safeName  = layerName.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 60);
-  const filename  = `${safeName}-${timestamp}.geojson`;
-  const path      = `${SUBMISSIONS_PATH}/${filename}`;
-  const content   = btoa(unescape(encodeURIComponent(JSON.stringify(geojson, null, 2))));
+  let path, filename;
+  if (existingPath) {
+    path     = existingPath;
+    filename = existingPath.split("/").pop();
+  } else {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    const safeName  = layerName.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 60);
+    filename = `${safeName}-${timestamp}.geojson`;
+    path     = `${SUBMISSIONS_PATH}/${filename}`;
+  }
+
+  const content = btoa(unescape(encodeURIComponent(JSON.stringify(geojson, null, 2))));
+  const body    = {
+    message: existingSha
+      ? `Sync GeoJSON layer: ${layerName}`
+      : `Upload GeoJSON layer: ${layerName}`,
+    content,
+    branch,
+  };
+  if (existingSha) body.sha = existingSha;
 
   const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
   const res = await fetch(apiUrl, {
@@ -731,21 +849,18 @@ async function commitToGitHub(geojson, layerName) {
       Accept: "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
     },
-    body: JSON.stringify({
-      message: `Upload GeoJSON layer: ${layerName}`,
-      content,
-      branch,
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(`GitHub API error (${res.status}): ${body.message || res.statusText}`);
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`GitHub API error (${res.status}): ${err.message || res.statusText}`);
   }
 
-  const data = await res.json();
+  const data   = await res.json();
+  const newSha = data.content.sha;
   const runUrl = `https://github.com/${owner}/${repo}/actions`;
-  return { filename, runUrl };
+  return { filename, path, sha: newSha, runUrl };
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -765,29 +880,37 @@ document.getElementById("submitBtn").addEventListener("click", async () => {
   const geojson = activeTab === "draw" ? buildGeojson() : uploadedGeojson;
   if (!geojson) return;
 
+  const isSync = activeTab === "draw" && submittedFileSha != null;
   const btn = document.getElementById("submitBtn");
   btn.disabled = true;
-  showStatus("info", "&#128196; Committing GeoJSON to GitHub — this will trigger the upload workflow&hellip;");
+  showStatus("info", isSync
+    ? "&#128196; Syncing changes to GitHub&hellip;"
+    : "&#128196; Committing GeoJSON to GitHub — this will trigger the upload workflow&hellip;"
+  );
 
   try {
-    const { filename, runUrl } = await commitToGitHub(geojson, layerName);
+    const { filename, path, sha, runUrl } = await commitToGitHub(
+      geojson,
+      layerName,
+      isSync ? submittedFilePath : null,
+      isSync ? submittedFileSha  : null
+    );
 
     showStatus("success", `
-      <strong>&#10003; Submitted!</strong><br>
-      <code>${filename}</code> committed to your repository.<br>
-      The <strong>GitHub Actions workflow</strong> will now upload it to your Felt map
-      using the <code>FELT_API_KEY</code> secret.<br><br>
+      <strong>&#10003; ${isSync ? "Synced!" : "Submitted!"}</strong><br>
+      <code>${filename}</code> ${isSync ? "updated" : "committed"} in your repository.<br>
+      The <strong>GitHub Actions workflow</strong> will now ${isSync ? "re-upload" : "upload"} it to your Felt map.<br><br>
       <a href="${escHtml(runUrl)}" target="_blank" rel="noopener">&#128279; Watch the Actions run &rarr;</a>
       &nbsp;&nbsp;
       <a href="${escHtml(FELT_MAP_URL)}" target="_blank" rel="noopener">&#128506; Open Felt map &rarr;</a>
     `);
 
-    // Reset
     if (activeTab === "draw") {
+      // Persist accumulated feature set, clear only new drawings
+      saveSubmission(geojson.features, path, sha);
       drawnItems.clearLayers();
       featureHistory = [];
       updateFeatureList();
-      document.getElementById("layerNameDraw").value = "";
     } else {
       uploadedGeojson = null;
       fileInput.value = "";
@@ -795,8 +918,8 @@ document.getElementById("submitBtn").addEventListener("click", async () => {
       dropZone.classList.remove("has-file");
       document.getElementById("layerNameUpload").value = "";
       if (previewLayer) { map.removeLayer(previewLayer); previewLayer = null; }
+      btn.disabled = true;
     }
-    btn.disabled = true;
   } catch (err) {
     showStatus("error", `<strong>Error:</strong> ${escHtml(err.message)}`);
     btn.disabled = false;
@@ -816,6 +939,7 @@ function escHtml(str) {
    Init
 ═══════════════════════════════════════════════════════════════ */
 checkSetup();
+loadPersistedSubmission();
 updateFeatureList();
 </script>
 </body>
