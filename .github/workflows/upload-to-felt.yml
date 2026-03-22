@@ -107,5 +107,33 @@ jobs:
                   print(f"  ERROR uploading to S3 ({s3.status_code}): {s3.text}", file=sys.stderr)
                   sys.exit(1)
 
+              # Apply FSL colour styling if embedded in the GeoJSON
+              try:
+                  gj = json.loads(file_content)
+                  felt_color = gj.get("felt_color")
+              except Exception:
+                  felt_color = None
+
+              if felt_color:
+                  print(f"  Applying style colour {felt_color}…")
+                  style_payload = {
+                      "style": [
+                          {"id": "fill",   "type": "fill",   "paint": {"fill-color": felt_color, "fill-opacity": 0.35}},
+                          {"id": "stroke", "type": "line",   "paint": {"line-color": felt_color, "line-width": 2}},
+                          {"id": "point",  "type": "circle", "paint": {"circle-color": felt_color, "circle-radius": 6, "circle-opacity": 0.8}},
+                          {"id": "label",  "type": "symbol"},
+                      ]
+                  }
+                  style_r = requests.post(
+                      f"https://felt.com/api/v2/maps/{map_id}/layers/{layer_id}/update_style",
+                      headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                      json=style_payload,
+                  )
+                  if style_r.ok:
+                      print(f"  Style applied successfully.")
+                  else:
+                      # Non-fatal: log but don't fail the workflow
+                      print(f"  Style not applied ({style_r.status_code}): {style_r.text}")
+
           print("\nAll files processed successfully.")
           PYEOF
