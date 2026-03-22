@@ -3,7 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Felt GeoJSON Uploader</title>
+  <meta name="theme-color" content="#e63946" />
+  <link rel="manifest" href="./manifest.json" />
+  <title>FELT — GeoJSON to Felt</title>
 
   <!-- Leaflet -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -1409,6 +1411,77 @@ loadPersistedSubmission();
 updateFeatureList();
 setSidebarCollapsed(LS.get("sidebarCollapsed") === "1", false);
 updateHeaderMapLink();
+
+/* ════════════════════════════════════════════════════════════
+   PWA — Service Worker registration & Share Target handler
+═══════════════════════════════════════════════════════════════ */
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("./sw.js").then(reg => {
+    // Ask the SW whether there are files that arrived before this page opened.
+    // (Covers the case where the app was launched fresh from the share sheet.)
+    const sw = reg.active || reg.installing || reg.waiting;
+    if (sw) sw.postMessage({ type: "CHECK_SHARE" });
+  }).catch(err => console.warn("[PWA] SW registration failed:", err));
+
+  // Handle files forwarded by the SW via postMessage (both fresh-launch and
+  // already-open-window paths arrive here).
+  navigator.serviceWorker.addEventListener("message", event => {
+    if (event.data?.type === "SHARED_FILES") {
+      loadSharedFiles(event.data.files);
+    }
+  });
+
+  // When the SW sends us back to the app root after a share, it may fire
+  // CHECK_SHARE before the SW is fully active. Re-check once the SW is ready.
+  navigator.serviceWorker.ready.then(reg => {
+    if (reg.active) reg.active.postMessage({ type: "CHECK_SHARE" });
+  });
+}
+
+/**
+ * Receive one or more shared GeoJSON files from the SW and load the first
+ * one into the Upload tab, ready for the user to review and submit.
+ * @param {Array<{name: string, content: string}>} files
+ */
+function loadSharedFiles(files) {
+  if (!files || files.length === 0) return;
+
+  const { name, content } = files[0];
+
+  try {
+    const gj = JSON.parse(content);
+    if (!gj.type) throw new Error("Not valid GeoJSON");
+
+    // Switch to the Upload tab so the user sees the incoming data.
+    document.querySelectorAll(".tab-btn").forEach(t => t.classList.remove("active"));
+    document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+    activeTab = "upload";
+    document.querySelector('.tab-btn[data-tab="upload"]').classList.add("active");
+    document.getElementById("tab-upload").classList.add("active");
+
+    // Populate the upload tab state exactly as if the user had picked a file.
+    uploadedGeojson = gj;
+    fileLabel.textContent = name;
+    dropZone.classList.add("has-file");
+    const nameInput = document.getElementById("layerNameUpload");
+    if (!nameInput.value.trim()) {
+      nameInput.value = name.replace(/\.(geojson|json)$/i, "");
+    }
+    previewGeojson(gj);
+    updateSubmitBtn();
+    clearStatus();
+
+    const extra = files.length > 1
+      ? ` (${files.length - 1} additional file${files.length > 2 ? "s" : ""} ignored)`
+      : "";
+    showStatus("success",
+      `<strong>&#128279; Shared file loaded:</strong> ${escHtml(name)}${extra} — choose a colour and submit when ready.`,
+      8000
+    );
+  } catch (err) {
+    showStatus("error", `Shared file "${escHtml(name)}" is not valid GeoJSON: ${err.message}`);
+  }
+}
 </script>
 </body>
 </html>
