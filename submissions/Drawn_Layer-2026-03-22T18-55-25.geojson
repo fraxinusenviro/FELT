@@ -1,0 +1,38 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {},
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -63.735369,
+              44.560461
+            ],
+            [
+              -63.735369,
+              44.560579
+            ],
+            [
+              -63.735201,
+              44.560579
+            ],
+            [
+              -63.735201,
+              44.560461
+            ],
+            [
+              -63.735369,
+              44.560461
+            ]
+          ]
+        ]
+      }
+    }
+  ],
+  "felt_color": "#e63946",
+  "felt_map_id": "xPT3HHZtRuWZCXy1pnq9CrB"
+}
