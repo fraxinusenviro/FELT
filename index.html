@@ -42,8 +42,8 @@
     header {
       background: var(--card);
       border-bottom: 1px solid var(--border);
-      padding: 0 1.25rem;
-      height: 56px;
+      padding: 0 1rem;
+      height: 44px;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -56,25 +56,25 @@
       align-items: center;
       gap: 0.6rem;
       font-weight: 700;
-      font-size: 1.05rem;
+      font-size: 0.95rem;
       color: var(--text);
       text-decoration: none;
     }
 
     .brand-icon {
-      width: 32px; height: 32px;
+      width: 28px; height: 28px;
       background: var(--red);
-      border-radius: 7px;
+      border-radius: 6px;
       display: flex; align-items: center; justify-content: center;
-      color: #fff; font-weight: 900; font-size: 1rem;
+      color: #fff; font-weight: 900; font-size: 0.85rem;
     }
 
     .header-actions { display: flex; gap: 0.5rem; align-items: center; }
 
     .btn-icon {
       background: none; border: 1.5px solid var(--border);
-      border-radius: 8px; padding: 0.35rem 0.7rem;
-      font-size: 0.82rem; color: var(--muted);
+      border-radius: 8px; padding: 0.3rem 0.6rem;
+      font-size: 0.8rem; color: var(--muted);
       cursor: pointer; transition: border-color 0.15s, color 0.15s;
       display: flex; align-items: center; gap: 0.35rem;
     }
@@ -82,8 +82,8 @@
 
     .map-link-btn {
       background: var(--red); border: none;
-      border-radius: 8px; padding: 0.4rem 0.9rem;
-      font-size: 0.82rem; font-weight: 600; color: #fff;
+      border-radius: 8px; padding: 0.3rem 0.8rem;
+      font-size: 0.8rem; font-weight: 600; color: #fff;
       cursor: pointer; text-decoration: none;
       display: flex; align-items: center; gap: 0.35rem;
       transition: background 0.15s;
@@ -97,32 +97,48 @@
       overflow: hidden;
     }
 
+    /* ── Sidebar toggle ───────────────────────────────────── */
+    .sidebar-toggle {
+      position: fixed;
+      top: calc(44px + 10px);
+      left: 260px;
+      z-index: 500;
+      width: 22px; height: 48px;
+      background: var(--card);
+      border: 1px solid var(--border); border-left: none;
+      border-radius: 0 8px 8px 0;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--muted); font-size: 0.7rem;
+      transition: left 0.28s cubic-bezier(0.4,0,0.2,1), color 0.15s;
+      box-shadow: 2px 0 6px rgba(0,0,0,0.07);
+    }
+    .sidebar-toggle:hover { color: var(--red); }
+
     /* ── Sidebar ─────────────────────────────────────────── */
     .sidebar {
-      width: 320px;
+      width: 260px;
       background: var(--card);
       border-right: 1px solid var(--border);
       display: flex;
       flex-direction: column;
-      overflow-y: auto;
+      overflow: hidden;
       flex-shrink: 0;
+      transition: width 0.28s cubic-bezier(0.4,0,0.2,1);
     }
+    .sidebar.collapsed { width: 0; }
 
-    .sidebar-inner { padding: 1.25rem; flex: 1; }
-
-    .section-title {
-      font-size: 0.72rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.07em;
-      color: var(--muted);
-      margin-bottom: 0.75rem;
+    .sidebar-inner {
+      padding: 0.875rem;
+      flex: 1;
+      min-width: 260px;
+      overflow-y: auto;
     }
 
     /* Tabs */
-    .tabs { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 1rem; }
+    .tabs { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 0.75rem; }
     .tab {
-      flex: 1; padding: 0.6rem; text-align: center;
+      flex: 1; padding: 0.45rem; text-align: center;
       font-size: 0.83rem; font-weight: 600; color: var(--muted);
       cursor: pointer; border-bottom: 2px solid transparent;
       transition: color 0.15s, border-color 0.15s;
@@ -133,12 +149,12 @@
     .tab-panel.active { display: block; }
 
     /* Fields */
-    label {
+    .modal label {
       display: block;
       font-size: 0.8rem; font-weight: 600; color: var(--muted);
-      margin-bottom: 0.3rem; margin-top: 0.9rem;
+      margin-bottom: 0.3rem; margin-top: 0.6rem;
     }
-    label:first-child { margin-top: 0; }
+    .modal label:first-of-type { margin-top: 0; }
 
     input[type="text"], input[type="password"] {
       width: 100%;
@@ -158,7 +174,7 @@
       background: #f0fdf4; border: 1px solid #bbf7d0;
       color: var(--green); border-radius: 99px;
       padding: 0.3rem 0.75rem; font-size: 0.8rem; font-weight: 700;
-      margin: 0.75rem 0;
+      margin: 0.5rem 0;
     }
 
     .feature-count.empty {
@@ -168,7 +184,7 @@
     /* Feature list */
     #featureList {
       list-style: none;
-      max-height: 150px;
+      max-height: 120px;
       overflow-y: auto;
       border: 1px solid var(--border);
       border-radius: 8px;
@@ -199,7 +215,7 @@
     }
     #sessionReset button:hover { color: var(--red); }
 
-    .btn-row { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
+    .btn-row { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
 
     .btn-sm {
       flex: 1; padding: 0.45rem;
@@ -233,8 +249,8 @@
 
     /* Submit button */
     #submitBtn {
-      width: 100%; margin-top: 1.25rem;
-      padding: 0.75rem;
+      width: 100%; margin-top: 0.875rem;
+      padding: 0.6rem;
       background: var(--red); color: #fff;
       border: none; border-radius: 8px;
       font-size: 0.95rem; font-weight: 700; cursor: pointer;
@@ -244,14 +260,23 @@
     #submitBtn:hover:not(:disabled) { background: var(--red-dk); }
     #submitBtn:disabled { opacity: 0.45; cursor: not-allowed; }
 
-    /* Status */
+    /* Status toast */
     #status {
-      margin-top: 1rem;
-      border-radius: 8px;
-      padding: 0.75rem 0.85rem;
-      font-size: 0.82rem;
-      line-height: 1.5;
-      display: none;
+      position: fixed;
+      bottom: 1.5rem; left: 50%;
+      transform: translateX(-50%) translateY(12px);
+      z-index: 2000;
+      min-width: 280px; max-width: 520px;
+      padding: 0.75rem 1rem;
+      border-radius: 10px;
+      font-size: 0.82rem; line-height: 1.5;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+      display: none; opacity: 0;
+      transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+    #status.visible {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
     }
     #status.info    { background: #eff6ff; color: var(--blue); border: 1px solid #bfdbfe; }
     #status.success { background: #f0fdf4; color: var(--green); border: 1px solid #bbf7d0; }
@@ -283,9 +308,6 @@
 
     .modal h2 { font-size: 1.15rem; margin-bottom: 0.25rem; }
     .modal p  { font-size: 0.82rem; color: var(--muted); margin-bottom: 1.25rem; line-height: 1.5; }
-
-    .modal label { margin-top: 1rem; }
-    .modal label:first-of-type { margin-top: 0; }
 
     .pw-wrap { position: relative; }
     .pw-wrap input { padding-right: 2.5rem; }
@@ -325,7 +347,9 @@
 
     /* Responsive */
     @media (max-width: 640px) {
-      .sidebar { width: 100%; max-height: 50vh; border-right: none; border-bottom: 1px solid var(--border); }
+      .sidebar { width: 100% !important; max-height: 45vh; border-right: none; border-bottom: 1px solid var(--border); transition: none; }
+      .sidebar.collapsed { max-height: 0; }
+      .sidebar-toggle { display: none; }
       .layout { flex-direction: column; }
     }
   </style>
@@ -357,6 +381,9 @@
 <!-- ── Main layout ────────────────────────────────────────── -->
 <div class="layout">
 
+  <!-- Sidebar collapse toggle -->
+  <button class="sidebar-toggle" id="sidebarToggle" aria-label="Toggle sidebar">&#10094;</button>
+
   <!-- Sidebar -->
   <div class="sidebar">
     <div class="sidebar-inner">
@@ -369,10 +396,8 @@
 
       <!-- ── Draw tab ─────────────────────────────────────── -->
       <div class="tab-panel active" id="tab-draw">
-        <div class="section-title">Layer name</div>
-        <input type="text" id="layerNameDraw" placeholder="My drawn layer" />
+        <input type="text" id="layerNameDraw" placeholder="Layer name" />
 
-        <label style="margin-top:1rem;">Features</label>
         <div id="featureCountDraw" class="feature-count empty">0 features</div>
         <div id="sessionReset">
           <button id="newSessionBtn">Start new session</button>
@@ -384,16 +409,14 @@
           <button class="btn-sm" id="clearBtn" disabled>&#128465; Clear new</button>
         </div>
 
-        <p style="font-size:0.75rem;color:var(--muted);margin-top:0.75rem;line-height:1.5;">
-          Use the toolbar on the map to draw polygons, lines, or points.
-          Submitted features remain on the map in gray; new drawings sync on next submit.
+        <p style="font-size:0.74rem;color:var(--muted);margin-top:0.5rem;line-height:1.5;">
+          Draw on the map, then submit. Submitted features stay in gray; new drawings sync on next submit.
         </p>
       </div>
 
       <!-- ── Upload tab ──────────────────────────────────── -->
       <div class="tab-panel" id="tab-upload">
-        <div class="section-title">Layer name</div>
-        <input type="text" id="layerNameUpload" placeholder="My uploaded layer" />
+        <input type="text" id="layerNameUpload" placeholder="Layer name" />
 
         <div class="drop-zone" id="dropZone">
           <input type="file" id="fileInput" accept=".geojson,.json,application/geo+json,application/json" />
@@ -407,8 +430,6 @@
       <!-- Submit -->
       <button id="submitBtn" disabled>Submit to Felt</button>
 
-      <div id="status"></div>
-
     </div><!-- /sidebar-inner -->
   </div><!-- /sidebar -->
 
@@ -416,6 +437,9 @@
   <div id="map"></div>
 
 </div><!-- /layout -->
+
+<!-- Status toast (outside sidebar so it's visible when collapsed) -->
+<div id="status"></div>
 
 <!-- ── Settings modal ─────────────────────────────────────── -->
 <div class="modal-backdrop" id="modalBackdrop">
@@ -474,6 +498,25 @@ const LS = {
   set: (k, v) => localStorage.setItem("felt_" + k, v),
   del: k => localStorage.removeItem("felt_" + k),
 };
+
+/* ════════════════════════════════════════════════════════════
+   Sidebar collapse
+═══════════════════════════════════════════════════════════════ */
+const sidebar   = document.querySelector(".sidebar");
+const toggleBtn = document.getElementById("sidebarToggle");
+const SIDEBAR_W = 260;
+
+function setSidebarCollapsed(collapsed, persist) {
+  sidebar.classList.toggle("collapsed", collapsed);
+  toggleBtn.innerHTML  = collapsed ? "&#10095;" : "&#10094;";
+  toggleBtn.style.left = collapsed ? "0px" : SIDEBAR_W + "px";
+  if (persist) LS.set("sidebarCollapsed", collapsed ? "1" : "0");
+  // Let Leaflet know the map container resized (called after transition completes)
+  setTimeout(() => map.invalidateSize(), 290);
+}
+toggleBtn.addEventListener("click", () =>
+  setSidebarCollapsed(!sidebar.classList.contains("collapsed"), true)
+);
 
 /* ════════════════════════════════════════════════════════════
    Settings modal
@@ -786,17 +829,26 @@ function updateSubmitBtn() {
 }
 
 /* ════════════════════════════════════════════════════════════
-   Status helpers
+   Status toast
 ═══════════════════════════════════════════════════════════════ */
-function showStatus(type, html) {
+let _statusTimer = null;
+function showStatus(type, html, autoDismissMs) {
   const el = document.getElementById("status");
+  el.style.display = "block";
   el.className = type;
   el.innerHTML = html;
-  el.style.display = "block";
+  // Double rAF to ensure the display:block renders before the transition starts
+  requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add("visible")));
+  if (_statusTimer) clearTimeout(_statusTimer);
+  if (autoDismissMs) _statusTimer = setTimeout(clearStatus, autoDismissMs);
 }
 function clearStatus() {
   const el = document.getElementById("status");
-  el.style.display = "none";
+  el.classList.remove("visible");
+  el.addEventListener("transitionend", () => {
+    el.style.display = "none";
+    el.className = "";
+  }, { once: true });
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -903,7 +955,7 @@ document.getElementById("submitBtn").addEventListener("click", async () => {
       <a href="${escHtml(runUrl)}" target="_blank" rel="noopener">&#128279; Watch the Actions run &rarr;</a>
       &nbsp;&nbsp;
       <a href="${escHtml(FELT_MAP_URL)}" target="_blank" rel="noopener">&#128506; Open Felt map &rarr;</a>
-    `);
+    `, 10000);
 
     if (activeTab === "draw") {
       // Persist accumulated feature set, clear only new drawings
@@ -941,6 +993,7 @@ function escHtml(str) {
 checkSetup();
 loadPersistedSubmission();
 updateFeatureList();
+setSidebarCollapsed(LS.get("sidebarCollapsed") === "1", false);
 </script>
 </body>
 </html>
