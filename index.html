@@ -334,6 +334,45 @@
     }
     .btn-primary:hover { background: var(--red-dk); }
 
+    /* Modal selects */
+    .modal select {
+      width: 100%;
+      padding: 0.55rem 0.75rem;
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      font-size: 0.88rem; color: var(--text);
+      background: #fff;
+      outline: none;
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    .modal select:focus { border-color: var(--red); }
+    .modal select:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* Create-map inline form */
+    .create-map-form {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.875rem;
+      margin-top: 0.5rem;
+    }
+    .create-map-form label { margin-top: 0.5rem; }
+    .create-map-form label:first-of-type { margin-top: 0; }
+
+    /* Current map pill */
+    .map-pill {
+      display: inline-flex; align-items: center; gap: 0.4rem;
+      background: #f0fdf4; border: 1px solid #bbf7d0;
+      color: var(--green); border-radius: 99px;
+      padding: 0.25rem 0.65rem; font-size: 0.78rem; font-weight: 600;
+      max-width: 100%; overflow: hidden;
+    }
+    .map-pill.default {
+      background: #f8fafc; border-color: var(--border); color: var(--muted);
+    }
+    .map-pill span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
     /* Setup warning banner */
     #setupBanner {
       background: #fffbeb; border-bottom: 1px solid #fde68a;
@@ -406,7 +445,7 @@
   </div>
   <div class="header-actions">
     <button class="btn-icon" id="settingsBtn">&#9881; Settings</button>
-    <a class="map-link-btn"
+    <a class="map-link-btn" id="openFeltBtn"
        href="https://felt.com/map/API-TESTING-z9BIC4uGlQfOXcwHwYGKwRC?share=1&loc=44.6489,-63.5753,14z"
        target="_blank" rel="noopener">
       &#128279; Open in Felt
@@ -537,9 +576,41 @@
       <button class="pw-toggle" id="feltKeyToggle" type="button" title="Show/hide key">&#128065;</button>
     </div>
 
+    <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.4rem">
+        <label style="margin:0">Felt Map</label>
+        <button class="btn-icon" id="loadMapsBtn" type="button" style="font-size:0.75rem;padding:0.2rem 0.55rem">&#8635; Load maps</button>
+      </div>
+      <div id="selectedMapDisplay" class="map-pill default"><span>Using default map</span></div>
+
+      <select id="cfgProject" style="display:none;margin-top:0.5rem">
+        <option value="">— Select a project —</option>
+      </select>
+      <select id="cfgMap" style="display:none;margin-top:0.4rem">
+        <option value="">— Select a map —</option>
+      </select>
+
+      <button class="btn-secondary" id="showCreateMapBtn" type="button"
+              style="display:none;margin-top:0.5rem;width:100%;font-size:0.82rem">
+        &#43; Create new map on Felt
+      </button>
+
+      <!-- Inline create-map form -->
+      <div class="create-map-form" id="createMapForm" style="display:none">
+        <label for="newMapTitle">Map title</label>
+        <input type="text" id="newMapTitle" placeholder="My new map" />
+        <label for="newMapProject">Add to project (optional)</label>
+        <select id="newMapProject"><option value="">— No project —</option></select>
+        <div style="display:flex;gap:0.5rem;margin-top:0.6rem">
+          <button class="btn-secondary" id="cancelCreateMapBtn" type="button" style="flex:1">Cancel</button>
+          <button class="btn-primary"   id="confirmCreateMapBtn" type="button" style="flex:1">Create</button>
+        </div>
+      </div>
+    </div>
+
     <p style="margin-top:0.75rem;font-size:0.75rem;color:var(--muted);">
       Settings are stored in <code>localStorage</code> on this device only.
-      The GitHub token commits GeoJSON files; the Felt key enables the Layers tab (delete layers, list layers).
+      The GitHub token commits GeoJSON files; the Felt key enables layer management and map selection.
     </p>
 
     <div class="modal-footer">
@@ -553,10 +624,17 @@
 /* ════════════════════════════════════════════════════════════
    Config & constants
 ═══════════════════════════════════════════════════════════════ */
-const FELT_MAP_URL =
+const FELT_MAP_ID_DEFAULT  = "z9BIC4uGlQfOXcwHwYGKwRC";
+const FELT_MAP_URL_DEFAULT =
   "https://felt.com/map/API-TESTING-z9BIC4uGlQfOXcwHwYGKwRC?share=1&loc=44.6489,-63.5753,14z";
-const FELT_MAP_ID    = "z9BIC4uGlQfOXcwHwYGKwRC";
 const SUBMISSIONS_PATH = "submissions";
+
+function getFeltMapId()  { return LS.get("map_id")  || FELT_MAP_ID_DEFAULT; }
+function getFeltMapUrl() { return LS.get("map_url") || FELT_MAP_URL_DEFAULT; }
+
+function updateHeaderMapLink() {
+  document.getElementById("openFeltBtn").href = getFeltMapUrl();
+}
 
 /* ════════════════════════════════════════════════════════════
    LocalStorage helpers
@@ -589,6 +667,11 @@ toggleBtn.addEventListener("click", () =>
 /* ════════════════════════════════════════════════════════════
    Settings modal
 ═══════════════════════════════════════════════════════════════ */
+let _pendingMapId    = null;
+let _pendingMapTitle = null;
+let _pendingMapUrl   = null;
+let _projectsCache   = [];
+
 const backdrop    = document.getElementById("modalBackdrop");
 const cfgOwner    = document.getElementById("cfgOwner");
 const cfgRepo     = document.getElementById("cfgRepo");
@@ -603,7 +686,26 @@ function loadSettings() {
   cfgBranch.value  = LS.get("branch") || "main";
   cfgToken.value   = LS.get("token");
   cfgFeltKey.value = LS.get("felt_key");
+  // Reset map picker UI state each time modal opens
+  _pendingMapId = _pendingMapTitle = _pendingMapUrl = null;
+  document.getElementById("cfgProject").style.display = "none";
+  document.getElementById("cfgMap").style.display = "none";
+  document.getElementById("showCreateMapBtn").style.display = "none";
+  document.getElementById("createMapForm").style.display = "none";
+  refreshMapPill();
   checkSetup();
+}
+
+function refreshMapPill() {
+  const pill  = document.getElementById("selectedMapDisplay");
+  const title = LS.get("map_title");
+  if (title) {
+    pill.className = "map-pill";
+    pill.innerHTML = `<span>&#128506; ${escHtml(title)}</span>`;
+  } else {
+    pill.className = "map-pill default";
+    pill.innerHTML = `<span>Using default map</span>`;
+  }
 }
 
 function checkSetup() {
@@ -629,6 +731,13 @@ document.getElementById("modalSave").addEventListener("click", () => {
   LS.set("branch",   cfgBranch.value.trim() || "main");
   LS.set("token",    cfgToken.value.trim());
   LS.set("felt_key", cfgFeltKey.value.trim());
+  if (_pendingMapId) {
+    LS.set("map_id",    _pendingMapId);
+    LS.set("map_title", _pendingMapTitle);
+    LS.set("map_url",   _pendingMapUrl);
+    updateHeaderMapLink();
+    _pendingMapId = _pendingMapTitle = _pendingMapUrl = null;
+  }
   backdrop.classList.remove("open");
   checkSetup();
   updateSubmitBtn();
@@ -640,6 +749,147 @@ document.getElementById("tokenToggle").addEventListener("click", () => {
 
 document.getElementById("feltKeyToggle").addEventListener("click", () => {
   cfgFeltKey.type = cfgFeltKey.type === "password" ? "text" : "password";
+});
+
+/* ════════════════════════════════════════════════════════════
+   Map picker — project / map selection + create new map
+═══════════════════════════════════════════════════════════════ */
+document.getElementById("loadMapsBtn").addEventListener("click", loadProjectsForPicker);
+
+async function loadProjectsForPicker() {
+  const feltKey = cfgFeltKey.value.trim() || LS.get("felt_key");
+  if (!feltKey) {
+    alert("Enter your Felt API key first, then click Load maps.");
+    return;
+  }
+  const btn = document.getElementById("loadMapsBtn");
+  btn.textContent = "…";
+  btn.disabled = true;
+
+  try {
+    const r = await fetch("https://felt.com/api/v2/projects", {
+      headers: { Authorization: `Bearer ${feltKey}` },
+    });
+    if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+    _projectsCache = await r.json();
+
+    const sel = document.getElementById("cfgProject");
+    sel.innerHTML = '<option value="">— Select a project —</option>' +
+      _projectsCache.map(p =>
+        `<option value="${escHtml(p.id)}">${escHtml(p.name)}</option>`
+      ).join("");
+    sel.style.display = "";
+
+    // Populate newMapProject select as well
+    const np = document.getElementById("newMapProject");
+    np.innerHTML = '<option value="">— No project —</option>' +
+      _projectsCache.map(p =>
+        `<option value="${escHtml(p.id)}">${escHtml(p.name)}</option>`
+      ).join("");
+
+    document.getElementById("showCreateMapBtn").style.display = "";
+  } catch (err) {
+    alert("Error loading projects: " + err.message);
+  } finally {
+    btn.textContent = "↻ Load maps";
+    btn.disabled = false;
+  }
+}
+
+document.getElementById("cfgProject").addEventListener("change", async function () {
+  const projectId = this.value;
+  const mapSel    = document.getElementById("cfgMap");
+  mapSel.style.display = "none";
+  mapSel.innerHTML = '<option value="">— Select a map —</option>';
+  if (!projectId) return;
+
+  const feltKey = cfgFeltKey.value.trim() || LS.get("felt_key");
+  mapSel.disabled = true;
+  mapSel.style.display = "";
+
+  try {
+    const r = await fetch(`https://felt.com/api/v2/projects/${projectId}`, {
+      headers: { Authorization: `Bearer ${feltKey}` },
+    });
+    if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+    const project = await r.json();
+    const maps = project.maps || [];
+    mapSel.innerHTML = '<option value="">— Select a map —</option>' +
+      maps.map(m =>
+        `<option value="${escHtml(m.id)}" data-url="${escHtml(m.url)}" data-title="${escHtml(m.title)}">${escHtml(m.title)}</option>`
+      ).join("");
+  } catch (err) {
+    mapSel.innerHTML = `<option value="">Error: ${escHtml(err.message)}</option>`;
+  } finally {
+    mapSel.disabled = false;
+  }
+});
+
+document.getElementById("cfgMap").addEventListener("change", function () {
+  const opt = this.options[this.selectedIndex];
+  if (!this.value) { _pendingMapId = _pendingMapTitle = _pendingMapUrl = null; return; }
+  _pendingMapId    = this.value;
+  _pendingMapTitle = opt.dataset.title || opt.textContent;
+  _pendingMapUrl   = opt.dataset.url   || "";
+  const pill = document.getElementById("selectedMapDisplay");
+  pill.className = "map-pill";
+  pill.innerHTML = `<span>&#128506; ${escHtml(_pendingMapTitle)} <em style="font-weight:400">(unsaved)</em></span>`;
+});
+
+// Create new map
+document.getElementById("showCreateMapBtn").addEventListener("click", () => {
+  document.getElementById("createMapForm").style.display = "";
+  document.getElementById("showCreateMapBtn").style.display = "none";
+});
+document.getElementById("cancelCreateMapBtn").addEventListener("click", () => {
+  document.getElementById("createMapForm").style.display = "none";
+  document.getElementById("showCreateMapBtn").style.display = "";
+  document.getElementById("newMapTitle").value = "";
+});
+document.getElementById("confirmCreateMapBtn").addEventListener("click", async () => {
+  const feltKey  = cfgFeltKey.value.trim() || LS.get("felt_key");
+  const title    = document.getElementById("newMapTitle").value.trim() || "Untitled Map";
+  const projId   = document.getElementById("newMapProject").value;
+  const btn      = document.getElementById("confirmCreateMapBtn");
+  btn.disabled = true;
+  btn.textContent = "Creating…";
+
+  try {
+    const r = await fetch("https://felt.com/api/v2/maps", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${feltKey}`, "Content-Type": "application/json" },
+      json: { title },
+      body: JSON.stringify({ title }),
+    });
+    if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+    const newMap = await r.json();
+
+    // Move to project if one was selected
+    if (projId) {
+      await fetch(`https://felt.com/api/v2/maps/${newMap.id}/move`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${feltKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: projId }),
+      });
+    }
+
+    _pendingMapId    = newMap.id;
+    _pendingMapTitle = newMap.title || title;
+    _pendingMapUrl   = newMap.url   || "";
+
+    const pill = document.getElementById("selectedMapDisplay");
+    pill.className = "map-pill";
+    pill.innerHTML = `<span>&#128506; ${escHtml(_pendingMapTitle)} <em style="font-weight:400">(unsaved)</em></span>`;
+
+    document.getElementById("createMapForm").style.display = "none";
+    document.getElementById("newMapTitle").value = "";
+    showStatus("success", `<strong>&#10003; Map created:</strong> ${escHtml(_pendingMapTitle)} — click Save settings to activate it.`, 8000);
+  } catch (err) {
+    alert("Error creating map: " + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Create";
+  }
 });
 
 /* ════════════════════════════════════════════════════════════
@@ -858,7 +1108,7 @@ async function fetchFeltLayers() {
   listEl.innerHTML = '<div class="layers-empty">Loading&hellip;</div>';
 
   try {
-    const r = await fetch(`https://felt.com/api/v2/maps/${FELT_MAP_ID}/layers`, {
+    const r = await fetch(`https://felt.com/api/v2/maps/${getFeltMapId()}/layers`, {
       headers: { Authorization: `Bearer ${feltKey}` },
     });
     if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
@@ -897,7 +1147,7 @@ async function deleteLayer(layerId, layerName, itemEl) {
   btn.textContent = "…";
 
   try {
-    const r = await fetch(`https://felt.com/api/v2/maps/${FELT_MAP_ID}/layers/${layerId}`, {
+    const r = await fetch(`https://felt.com/api/v2/maps/${getFeltMapId()}/layers/${layerId}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${feltKey}` },
     });
@@ -1089,11 +1339,12 @@ document.getElementById("submitBtn").addEventListener("click", async () => {
   const geojson = activeTab === "draw" ? buildGeojson() : uploadedGeojson;
   if (!geojson) return;
 
-  // Embed chosen colour so the workflow can apply FSL styling
+  // Embed metadata for the workflow: colour + target map
   const colorInput = document.getElementById(
     activeTab === "draw" ? "colorPickerDraw" : "colorPickerUpload"
   );
-  geojson.felt_color = colorInput.value;
+  geojson.felt_color  = colorInput.value;
+  geojson.felt_map_id = getFeltMapId();
 
   const isSync = activeTab === "draw" && submittedFileSha != null;
   const btn = document.getElementById("submitBtn");
@@ -1117,7 +1368,7 @@ document.getElementById("submitBtn").addEventListener("click", async () => {
       The <strong>GitHub Actions workflow</strong> will now ${isSync ? "re-upload" : "upload"} it to your Felt map.<br><br>
       <a href="${escHtml(runUrl)}" target="_blank" rel="noopener">&#128279; Watch the Actions run &rarr;</a>
       &nbsp;&nbsp;
-      <a href="${escHtml(FELT_MAP_URL)}" target="_blank" rel="noopener">&#128506; Open Felt map &rarr;</a>
+      <a href="${escHtml(getFeltMapUrl())}" target="_blank" rel="noopener">&#128506; Open Felt map &rarr;</a>
     `, 10000);
 
     if (activeTab === "draw") {
@@ -1157,6 +1408,7 @@ checkSetup();
 loadPersistedSubmission();
 updateFeatureList();
 setSidebarCollapsed(LS.get("sidebarCollapsed") === "1", false);
+updateHeaderMapLink();
 </script>
 </body>
 </html>

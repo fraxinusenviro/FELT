@@ -32,24 +32,11 @@ jobs:
           import os, json, sys, requests, subprocess
           from pathlib import Path
 
-          api_key = os.environ["FELT_API_KEY"]
-          map_id  = os.environ["FELT_MAP_ID"]
+          api_key         = os.environ["FELT_API_KEY"]
+          default_map_id  = os.environ["FELT_MAP_ID"]
 
-          # Fetch all existing layers on the map so we can refresh instead of re-uploading
-          layers_r = requests.get(
-              f"https://felt.com/api/v2/maps/{map_id}/layers",
-              headers={"Authorization": f"Bearer {api_key}"},
-          )
-          existing_layers = {}
-          if layers_r.ok:
-              layers_data = layers_r.json()
-              layers_list = layers_data if isinstance(layers_data, list) else layers_data.get("data", [])
-              for layer in layers_list:
-                  if layer.get("status") == "completed":
-                      existing_layers[layer["name"]] = layer["id"]
-          print(f"Found {len(existing_layers)} existing completed layer(s) on the map.")
-
-          # Find GeoJSON files added or modified in the latest commit
+          # Find GeoJSON files added or modified in the latest commit first,
+          # so we can read felt_map_id from the file before fetching layers.
           result = subprocess.run(
               ["git", "diff", "--name-only", "--diff-filter=AM", "HEAD~1", "HEAD"],
               capture_output=True, text=True
@@ -60,21 +47,57 @@ jobs:
               print("No GeoJSON files changed — nothing to upload.")
               sys.exit(0)
 
+          # Resolve map_id from first changed file (client embeds felt_map_id)
+          map_id = default_map_id
+          try:
+              with open(changed[0], "rb") as f:
+                  first_gj = json.loads(f.read())
+              map_id = first_gj.get("felt_map_id", default_map_id)
+          except Exception:
+              pass
+          print(f"Target map ID: {map_id}")
+
+          # Fetch all existing completed layers so we can refresh instead of re-uploading
+          layers_r = requests.get(
+              f"https://felt.com/api/v2/maps/{map_id}/layers",
+              headers={"Authorization": f"Bearer {api_key}"},
+          )
+          existing_layers = {}
+          if layers_r.ok:
+              layers_list = layers_r.json() if isinstance(layers_r.json(), list) else layers_r.json().get("data", [])
+              for layer in layers_list:
+                  if layer.get("status") == "completed":
+                      existing_layers[layer["name"]] = layer["id"]
+          print(f"Found {len(existing_layers)} existing completed layer(s) on the map.")
+
           for filepath in changed:
               print(f"\nProcessing: {filepath}")
+
+              with open(filepath, "rb") as f:
+                  file_content = f.read()
+
+              # Read per-file metadata embedded by the client
+              try:
+                  gj = json.loads(file_content)
+                  felt_color  = gj.get("felt_color")
+                  file_map_id = gj.get("felt_map_id", map_id)
+              except Exception:
+                  felt_color  = None
+                  file_map_id = map_id
+
               layer_name        = Path(filepath).stem.replace("-", " ").replace("_", " ").title()
               existing_layer_id = existing_layers.get(layer_name)
 
               if existing_layer_id:
                   print(f"  Refreshing existing layer {existing_layer_id} ('{layer_name}')...")
                   r = requests.post(
-                      f"https://felt.com/api/v2/maps/{map_id}/layers/{existing_layer_id}/refresh",
+                      f"https://felt.com/api/v2/maps/{file_map_id}/layers/{existing_layer_id}/refresh",
                       headers={"Authorization": f"Bearer {api_key}"},
                   )
               else:
                   print(f"  Creating new layer '{layer_name}'...")
                   r = requests.post(
-                      f"https://felt.com/api/v2/maps/{map_id}/upload",
+                      f"https://felt.com/api/v2/maps/{file_map_id}/upload",
                       headers={
                           "Authorization": f"Bearer {api_key}",
                           "Content-Type": "application/json",
@@ -86,16 +109,13 @@ jobs:
                   print(f"  ERROR from Felt API ({r.status_code}): {r.text}", file=sys.stderr)
                   sys.exit(1)
 
-              data      = r.json()
-              url       = data["url"]
-              attrs     = data["presigned_attributes"]
-              layer_id  = existing_layer_id or data.get("layer_id", "unknown")
+              data     = r.json()
+              url      = data["url"]
+              attrs    = data["presigned_attributes"]
+              layer_id = existing_layer_id or data.get("layer_id", "unknown")
               print(f"  Layer ID: {layer_id}")
 
-              # Upload file to S3 using presigned URL (text fields must precede the file)
-              with open(filepath, "rb") as f:
-                  file_content = f.read()
-
+              # Upload file content to S3 using presigned URL
               files = {k: (None, v) for k, v in attrs.items()}
               files["file"] = ("data.geojson", file_content, "application/geo+json")
 
@@ -107,32 +127,32 @@ jobs:
                   print(f"  ERROR uploading to S3 ({s3.status_code}): {s3.text}", file=sys.stderr)
                   sys.exit(1)
 
-              # Apply FSL colour styling if embedded in the GeoJSON
-              try:
-                  gj = json.loads(file_content)
-                  felt_color = gj.get("felt_color")
-              except Exception:
-                  felt_color = None
-
+              # Apply FSL simple colour styling if embedded in the GeoJSON
               if felt_color:
-                  print(f"  Applying style colour {felt_color}…")
-                  style_payload = {
-                      "style": [
-                          {"id": "fill",   "type": "fill",   "paint": {"fill-color": felt_color, "fill-opacity": 0.35}},
-                          {"id": "stroke", "type": "line",   "paint": {"line-color": felt_color, "line-width": 2}},
-                          {"id": "point",  "type": "circle", "paint": {"circle-color": felt_color, "circle-radius": 6, "circle-opacity": 0.8}},
-                          {"id": "label",  "type": "symbol"},
-                      ]
-                  }
+                  print(f"  Applying style colour {felt_color}...")
                   style_r = requests.post(
-                      f"https://felt.com/api/v2/maps/{map_id}/layers/{layer_id}/update_style",
+                      f"https://felt.com/api/v2/maps/{file_map_id}/layers/{layer_id}/update_style",
                       headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                      json=style_payload,
+                      json={
+                          "style": {
+                              "version": "2.3",
+                              "type": "simple",
+                              "config": {},
+                              "legend": {},
+                              "paint": {
+                                  "color": felt_color,
+                                  "opacity": 0.7,
+                                  "size": 5,
+                                  "strokeColor": "auto",
+                                  "strokeWidth": 1,
+                              },
+                          }
+                      },
                   )
                   if style_r.ok:
                       print(f"  Style applied successfully.")
                   else:
-                      # Non-fatal: log but don't fail the workflow
+                      # Non-fatal — log and continue
                       print(f"  Style not applied ({style_r.status_code}): {style_r.text}")
 
           print("\nAll files processed successfully.")
