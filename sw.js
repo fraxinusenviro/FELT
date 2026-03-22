@@ -1,38 +1,63 @@
 /**
  * FELT GeoJSON Uploader — Service Worker
  *
- * Sole responsibility: receive shared GeoJSON files via the Web Share
- * Target API, stash them in CacheStorage, then redirect back to the app.
- * The main page polls for pending files on load and whenever the SW sends
- * a SHARED_FILES message.
- *
- * All other fetch requests are passed straight through (no caching of app
- * shell here — keep it simple and let the browser handle that).
+ * Two responsibilities:
+ * 1. Cache the app shell (index.html + manifest) so iOS can launch the app
+ *    reliably from the share sheet (WebKit requires a cached start_url).
+ * 2. Receive shared GeoJSON files via the Web Share Target API, stash them
+ *    in CacheStorage, then redirect back to the app.
  */
 
-const SHARE_CACHE  = "felt-share-v1";
-const PENDING_KEY  = "pending-share";
+const APP_CACHE   = "felt-app-v1";
+const SHARE_CACHE = "felt-share-v1";
+const PENDING_KEY = "pending-share";
+
+// Resources to pre-cache on install (must be served over HTTPS in production).
+const APP_SHELL = ["./", "./manifest.json"];
 
 // ── Lifecycle ────────────────────────────────────────────────────────────────
 
-self.addEventListener("install",  () => self.skipWaiting());
-self.addEventListener("activate", e  => e.waitUntil(self.clients.claim()));
+self.addEventListener("install", e => {
+  e.waitUntil(
+    caches.open(APP_CACHE)
+      .then(c => c.addAll(APP_SHELL))
+      .then(() => self.skipWaiting())
+  );
+});
+
+self.addEventListener("activate", e => e.waitUntil(self.clients.claim()));
 
 // ── Fetch interception ───────────────────────────────────────────────────────
 
 self.addEventListener("fetch", event => {
   const url = new URL(event.request.url);
 
-  // Only intercept the share-target POST; everything else falls through.
-  if (
-    event.request.method === "POST" &&
-    url.searchParams.has("share-target")
-  ) {
+  // 1. Share target POST — handle before anything else.
+  if (event.request.method === "POST" && url.searchParams.has("share-target")) {
     event.respondWith(handleShareTarget(event.request));
     return;
   }
 
-  // Default: network pass-through (no offline caching for the app shell).
+  // 2. Navigation requests (and manifest) — cache-first, update in background.
+  //    iOS requires a cached response for start_url to launch via share sheet.
+  const isNavigation = event.request.mode === "navigate";
+  const isShell      = APP_SHELL.some(p =>
+    url.pathname === new URL(p, self.registration.scope).pathname
+  );
+  if (isNavigation || isShell) {
+    event.respondWith(
+      caches.match(event.request).then(cached => {
+        const networkFetch = fetch(event.request).then(res => {
+          caches.open(APP_CACHE).then(c => c.put(event.request, res.clone()));
+          return res;
+        });
+        return cached || networkFetch;
+      })
+    );
+    return;
+  }
+
+  // 3. Everything else — network pass-through.
   event.respondWith(fetch(event.request));
 });
 
