@@ -1,0 +1,39 @@
+{
+  "name": "FELT GeoJSON Uploader",
+  "short_name": "FELT",
+  "description": "Draw or upload GeoJSON and publish to your Felt map",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#e63946",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "share_target": {
+    "action": "./?share-target",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text":  "text",
+      "url":   "url",
+      "files": [
+        {
+          "name": "geojson",
+          "accept": [
+            "application/geo+json",
+            "application/json",
+            ".geojson",
+            ".json"
+          ]
+        }
+      ]
+    }
+  }
+}
