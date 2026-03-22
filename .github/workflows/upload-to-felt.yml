@@ -6,9 +6,6 @@ on:
       - "submissions/*.geojson"
     branches: [main]
 
-permissions:
-  contents: write
-
 jobs:
   upload:
     runs-on: ubuntu-latest
@@ -32,17 +29,27 @@ jobs:
           FELT_MAP_ID: "z9BIC4uGlQfOXcwHwYGKwRC"
         run: |
           python - <<'PYEOF'
-          import os, json, sys, requests
+          import os, json, sys, requests, subprocess
           from pathlib import Path
 
           api_key = os.environ["FELT_API_KEY"]
           map_id  = os.environ["FELT_MAP_ID"]
 
-          meta_dir = Path("submissions/.meta")
-          meta_dir.mkdir(parents=True, exist_ok=True)
+          # Fetch all existing layers on the map so we can refresh instead of re-uploading
+          layers_r = requests.get(
+              f"https://felt.com/api/v2/maps/{map_id}/layers",
+              headers={"Authorization": f"Bearer {api_key}"},
+          )
+          existing_layers = {}
+          if layers_r.ok:
+              layers_data = layers_r.json()
+              layers_list = layers_data if isinstance(layers_data, list) else layers_data.get("data", [])
+              for layer in layers_list:
+                  if layer.get("status") == "completed":
+                      existing_layers[layer["name"]] = layer["id"]
+          print(f"Found {len(existing_layers)} existing completed layer(s) on the map.")
 
           # Find GeoJSON files added or modified in the latest commit
-          import subprocess
           result = subprocess.run(
               ["git", "diff", "--name-only", "--diff-filter=AM", "HEAD~1", "HEAD"],
               capture_output=True, text=True
@@ -55,28 +62,16 @@ jobs:
 
           for filepath in changed:
               print(f"\nProcessing: {filepath}")
-              stem       = Path(filepath).stem
-              meta_path  = meta_dir / f"{stem}.json"
-              layer_name = stem.replace("-", " ").replace("_", " ").title()
-
-              # Check if we have a stored layer_id for this file
-              existing_layer_id = None
-              if meta_path.exists():
-                  try:
-                      existing_layer_id = json.loads(meta_path.read_text()).get("layer_id")
-                  except Exception:
-                      pass
+              layer_name        = Path(filepath).stem.replace("-", " ").replace("_", " ").title()
+              existing_layer_id = existing_layers.get(layer_name)
 
               if existing_layer_id:
-                  # Refresh the existing Felt layer in place
-                  print(f"  Refreshing existing layer {existing_layer_id}...")
+                  print(f"  Refreshing existing layer {existing_layer_id} ('{layer_name}')...")
                   r = requests.post(
                       f"https://felt.com/api/v2/maps/{map_id}/layers/{existing_layer_id}/refresh",
                       headers={"Authorization": f"Bearer {api_key}"},
                   )
-                  layer_id = existing_layer_id
               else:
-                  # First upload — create a new layer
                   print(f"  Creating new layer '{layer_name}'...")
                   r = requests.post(
                       f"https://felt.com/api/v2/maps/{map_id}/upload",
@@ -86,17 +81,15 @@ jobs:
                       },
                       json={"name": layer_name},
                   )
-                  if r.ok:
-                      layer_id = r.json().get("layer_id", "unknown")
-                      meta_path.write_text(json.dumps({"layer_id": layer_id, "layer_name": layer_name}))
 
               if not r.ok:
                   print(f"  ERROR from Felt API ({r.status_code}): {r.text}", file=sys.stderr)
                   sys.exit(1)
 
-              data  = r.json()
-              url   = data["url"]
-              attrs = data["presigned_attributes"]
+              data      = r.json()
+              url       = data["url"]
+              attrs     = data["presigned_attributes"]
+              layer_id  = existing_layer_id or data.get("layer_id", "unknown")
               print(f"  Layer ID: {layer_id}")
 
               # Upload file to S3 using presigned URL (text fields must precede the file)
@@ -116,16 +109,3 @@ jobs:
 
           print("\nAll files processed successfully.")
           PYEOF
-
-      - name: Commit layer metadata
-        run: |
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git config user.name "github-actions[bot]"
-          git remote set-url origin https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}
-          git add submissions/.meta/
-          if git diff --staged --quiet; then
-            echo "No new metadata to commit."
-          else
-            git commit -m "chore: store Felt layer IDs [skip ci]"
-            git push
-          fi
