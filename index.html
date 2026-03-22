@@ -345,6 +345,48 @@
       font-weight: 700; cursor: pointer; text-decoration: underline;
     }
 
+    /* Color picker row */
+    .name-color-row {
+      display: flex; gap: 0.5rem; align-items: center;
+      margin-bottom: 0;
+    }
+    .name-color-row input[type="text"] { flex: 1; margin-bottom: 0; }
+    input[type="color"] {
+      width: 36px; height: 36px;
+      padding: 2px; border: 1.5px solid var(--border);
+      border-radius: 8px; cursor: pointer;
+      background: none; flex-shrink: 0;
+    }
+    input[type="color"]:focus { border-color: var(--red); outline: none; }
+
+    /* Layers tab */
+    .layers-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 0.5rem;
+    }
+    .layers-header span { font-size: 0.82rem; font-weight: 600; color: var(--muted); }
+    .layers-list { margin-top: 0.25rem; }
+    .layer-item {
+      display: flex; align-items: center; gap: 0.5rem;
+      padding: 0.45rem 0.6rem;
+      border: 1px solid var(--border);
+      border-radius: 8px; margin-bottom: 0.35rem;
+      font-size: 0.82rem;
+    }
+    .layer-item-name {
+      flex: 1; font-weight: 600; color: var(--text);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .btn-delete {
+      background: none; border: 1.5px solid transparent;
+      border-radius: 6px; padding: 0.2rem 0.45rem;
+      color: var(--muted); cursor: pointer; font-size: 0.78rem;
+      transition: all 0.15s; flex-shrink: 0;
+    }
+    .btn-delete:hover { border-color: var(--red); color: var(--red); background: #fff1f2; }
+    .layers-empty { font-size: 0.8rem; color: var(--muted); padding: 0.5rem 0; text-align: center; }
+    .layers-note { font-size: 0.74rem; color: var(--muted); margin-top: 0.5rem; line-height: 1.5; }
+
     /* Responsive */
     @media (max-width: 640px) {
       .sidebar { width: 100% !important; max-height: 45vh; border-right: none; border-bottom: 1px solid var(--border); transition: none; }
@@ -391,12 +433,16 @@
       <!-- Tabs -->
       <div class="tabs">
         <div class="tab active" data-tab="draw">&#9998; Draw</div>
-        <div class="tab" data-tab="upload">&#128196; Upload File</div>
+        <div class="tab" data-tab="upload">&#128196; Upload</div>
+        <div class="tab" data-tab="layers">&#9776; Layers</div>
       </div>
 
       <!-- ── Draw tab ─────────────────────────────────────── -->
       <div class="tab-panel active" id="tab-draw">
-        <input type="text" id="layerNameDraw" placeholder="Layer name" />
+        <div class="name-color-row">
+          <input type="text" id="layerNameDraw" placeholder="Layer name" />
+          <input type="color" id="colorPickerDraw" value="#e63946" title="Layer colour" />
+        </div>
 
         <div id="featureCountDraw" class="feature-count empty">0 features</div>
         <div id="sessionReset">
@@ -416,7 +462,10 @@
 
       <!-- ── Upload tab ──────────────────────────────────── -->
       <div class="tab-panel" id="tab-upload">
-        <input type="text" id="layerNameUpload" placeholder="Layer name" />
+        <div class="name-color-row">
+          <input type="text" id="layerNameUpload" placeholder="Layer name" />
+          <input type="color" id="colorPickerUpload" value="#1d4ed8" title="Layer colour" />
+        </div>
 
         <div class="drop-zone" id="dropZone">
           <input type="file" id="fileInput" accept=".geojson,.json,application/geo+json,application/json" />
@@ -425,6 +474,18 @@
           <div class="drop-secondary">or click to browse &mdash; .geojson / .json, max 50 MB</div>
           <div class="drop-filename" id="uploadFileName"></div>
         </div>
+      </div>
+
+      <!-- ── Layers tab ──────────────────────────────────── -->
+      <div class="tab-panel" id="tab-layers">
+        <div class="layers-header">
+          <span>Felt map layers</span>
+          <button class="btn-sm" id="refreshLayersBtn" style="flex:0;padding:0.3rem 0.6rem;">&#8635; Refresh</button>
+        </div>
+        <div id="layersList" class="layers-list">
+          <div class="layers-empty">Click Refresh to load layers.</div>
+        </div>
+        <p class="layers-note">Requires Felt API key in Settings. Deleted layers are removed from the Felt map immediately.</p>
       </div>
 
       <!-- Submit -->
@@ -470,9 +531,15 @@
       <button class="pw-toggle" id="tokenToggle" type="button" title="Show/hide token">&#128065;</button>
     </div>
 
+    <label for="cfgFeltKey">Felt API Key <span style="font-weight:400;color:var(--muted)">(optional — for layer management)</span></label>
+    <div class="pw-wrap">
+      <input type="password" id="cfgFeltKey" placeholder="felt_pat_…" />
+      <button class="pw-toggle" id="feltKeyToggle" type="button" title="Show/hide key">&#128065;</button>
+    </div>
+
     <p style="margin-top:0.75rem;font-size:0.75rem;color:var(--muted);">
       Settings are stored in <code>localStorage</code> on this device only.
-      The token is used solely to commit GeoJSON files to your repository.
+      The GitHub token commits GeoJSON files; the Felt key enables the Layers tab (delete layers, list layers).
     </p>
 
     <div class="modal-footer">
@@ -488,6 +555,7 @@
 ═══════════════════════════════════════════════════════════════ */
 const FELT_MAP_URL =
   "https://felt.com/map/API-TESTING-z9BIC4uGlQfOXcwHwYGKwRC?share=1&loc=44.6489,-63.5753,14z";
+const FELT_MAP_ID    = "z9BIC4uGlQfOXcwHwYGKwRC";
 const SUBMISSIONS_PATH = "submissions";
 
 /* ════════════════════════════════════════════════════════════
@@ -526,13 +594,15 @@ const cfgOwner    = document.getElementById("cfgOwner");
 const cfgRepo     = document.getElementById("cfgRepo");
 const cfgBranch   = document.getElementById("cfgBranch");
 const cfgToken    = document.getElementById("cfgToken");
+const cfgFeltKey  = document.getElementById("cfgFeltKey");
 const setupBanner = document.getElementById("setupBanner");
 
 function loadSettings() {
-  cfgOwner.value  = LS.get("owner");
-  cfgRepo.value   = LS.get("repo");
-  cfgBranch.value = LS.get("branch") || "main";
-  cfgToken.value  = LS.get("token");
+  cfgOwner.value   = LS.get("owner");
+  cfgRepo.value    = LS.get("repo");
+  cfgBranch.value  = LS.get("branch") || "main";
+  cfgToken.value   = LS.get("token");
+  cfgFeltKey.value = LS.get("felt_key");
   checkSetup();
 }
 
@@ -554,10 +624,11 @@ document.getElementById("modalCancel").addEventListener("click", () => backdrop.
 backdrop.addEventListener("click", e => { if (e.target === backdrop) backdrop.classList.remove("open"); });
 
 document.getElementById("modalSave").addEventListener("click", () => {
-  LS.set("owner",  cfgOwner.value.trim());
-  LS.set("repo",   cfgRepo.value.trim());
-  LS.set("branch", cfgBranch.value.trim() || "main");
-  LS.set("token",  cfgToken.value.trim());
+  LS.set("owner",    cfgOwner.value.trim());
+  LS.set("repo",     cfgRepo.value.trim());
+  LS.set("branch",   cfgBranch.value.trim() || "main");
+  LS.set("token",    cfgToken.value.trim());
+  LS.set("felt_key", cfgFeltKey.value.trim());
   backdrop.classList.remove("open");
   checkSetup();
   updateSubmitBtn();
@@ -565,6 +636,10 @@ document.getElementById("modalSave").addEventListener("click", () => {
 
 document.getElementById("tokenToggle").addEventListener("click", () => {
   cfgToken.type = cfgToken.type === "password" ? "text" : "password";
+});
+
+document.getElementById("feltKeyToggle").addEventListener("click", () => {
+  cfgFeltKey.type = cfgFeltKey.type === "password" ? "text" : "password";
 });
 
 /* ════════════════════════════════════════════════════════════
@@ -764,8 +839,84 @@ document.querySelectorAll(".tab").forEach(tab => {
     tab.classList.add("active");
     document.getElementById("tab-" + activeTab).classList.add("active");
     updateSubmitBtn();
+    if (activeTab === "layers") fetchFeltLayers();
   });
 });
+
+/* ════════════════════════════════════════════════════════════
+   Felt API — layers management
+═══════════════════════════════════════════════════════════════ */
+async function fetchFeltLayers() {
+  const feltKey = LS.get("felt_key");
+  const listEl  = document.getElementById("layersList");
+
+  if (!feltKey) {
+    listEl.innerHTML = '<div class="layers-empty">Add your Felt API key in Settings to manage layers.</div>';
+    return;
+  }
+
+  listEl.innerHTML = '<div class="layers-empty">Loading&hellip;</div>';
+
+  try {
+    const r = await fetch(`https://felt.com/api/v2/maps/${FELT_MAP_ID}/layers`, {
+      headers: { Authorization: `Bearer ${feltKey}` },
+    });
+    if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+    const data = await r.json();
+    const layers = Array.isArray(data) ? data : (data.data || []);
+
+    if (layers.length === 0) {
+      listEl.innerHTML = '<div class="layers-empty">No layers on this map yet.</div>';
+      return;
+    }
+
+    listEl.innerHTML = "";
+    layers.forEach(layer => {
+      const item = document.createElement("div");
+      item.className = "layer-item";
+      item.innerHTML = `
+        <span class="layer-item-name" title="${escHtml(layer.name)}">${escHtml(layer.name)}</span>
+        <button class="btn-delete" title="Delete layer">&#128465;</button>
+      `;
+      item.querySelector(".btn-delete").addEventListener("click", () =>
+        deleteLayer(layer.id, layer.name, item)
+      );
+      listEl.appendChild(item);
+    });
+  } catch (err) {
+    listEl.innerHTML = `<div class="layers-empty">Error: ${escHtml(err.message)}</div>`;
+  }
+}
+
+async function deleteLayer(layerId, layerName, itemEl) {
+  if (!confirm(`Delete layer "${layerName}" from Felt? This cannot be undone.`)) return;
+
+  const feltKey = LS.get("felt_key");
+  const btn = itemEl.querySelector(".btn-delete");
+  btn.disabled = true;
+  btn.textContent = "…";
+
+  try {
+    const r = await fetch(`https://felt.com/api/v2/maps/${FELT_MAP_ID}/layers/${layerId}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${feltKey}` },
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      throw new Error(`${r.status}: ${err.message || r.statusText}`);
+    }
+    itemEl.style.transition = "opacity 0.2s";
+    itemEl.style.opacity = "0";
+    setTimeout(() => itemEl.remove(), 220);
+    showStatus("success", `<strong>&#10003; Deleted</strong> layer "${escHtml(layerName)}" from Felt.`, 6000);
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = "🗑";
+    showStatus("error", `<strong>Error deleting layer:</strong> ${escHtml(err.message)}`);
+  }
+}
+
+document.getElementById("refreshLayersBtn").addEventListener("click", fetchFeltLayers);
 
 /* ════════════════════════════════════════════════════════════
    File upload tab
@@ -822,10 +973,16 @@ function previewGeojson(gj) {
    Submit button state
 ═══════════════════════════════════════════════════════════════ */
 function updateSubmitBtn() {
+  const btn = document.getElementById("submitBtn");
+  if (activeTab === "layers") {
+    btn.style.display = "none";
+    return;
+  }
+  btn.style.display = "";
   const hasData = activeTab === "draw"
     ? drawnItems.getLayers().length > 0
     : uploadedGeojson !== null;
-  document.getElementById("submitBtn").disabled = !hasData;
+  btn.disabled = !hasData;
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -931,6 +1088,12 @@ document.getElementById("submitBtn").addEventListener("click", async () => {
 
   const geojson = activeTab === "draw" ? buildGeojson() : uploadedGeojson;
   if (!geojson) return;
+
+  // Embed chosen colour so the workflow can apply FSL styling
+  const colorInput = document.getElementById(
+    activeTab === "draw" ? "colorPickerDraw" : "colorPickerUpload"
+  );
+  geojson.felt_color = colorInput.value;
 
   const isSync = activeTab === "draw" && submittedFileSha != null;
   const btn = document.getElementById("submitBtn");
