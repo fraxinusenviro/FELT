@@ -62,7 +62,18 @@
           ]
         ]
       }
+    },
+    {
+      "type": "Feature",
+      "properties": {},
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -63.638992,
+          44.694782
+        ]
+      }
     }
   ],
-  "felt_color": "#c4bc00"
+  "felt_color": "#76bb40"
 }
