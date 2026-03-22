@@ -1,0 +1,17 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {},
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -63.638992,
+          44.697812
+        ]
+      }
+    }
+  ],
+  "felt_color": "#96d35f"
+}
