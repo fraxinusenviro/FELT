@@ -2,7 +2,7 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [main]
+    branches: [main, claude/geojson-felt-uploader-V6ukM]
   workflow_dispatch:
 
 permissions:

@@ -27,6 +27,19 @@ const upload = multer({
   },
 });
 
+// Serve PWA assets that live in the repo root (not under public/).
+// public/index.html doesn't reference these, so this only matters for
+// local inspection and healthcheck tooling — PWA itself runs on GitHub Pages.
+const PWA_ROOT_FILES = [
+  "manifest.json", "sw.js", "icon.svg",
+  "apple-touch-icon.png", "icon-192.png", "icon-512.png",
+];
+for (const file of PWA_ROOT_FILES) {
+  app.get(`/${file}`, (_req, res) =>
+    res.sendFile(path.resolve(__dirname, file))
+  );
+}
+
 app.use(express.static("public"));
 
 // Health / config endpoint so the frontend can confirm the server is ready
